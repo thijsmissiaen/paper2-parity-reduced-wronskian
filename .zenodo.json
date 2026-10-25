@@ -1,0 +1,32 @@
+{
+  "title": "Parity-Reduced Transverse Wronskians, Higher Dipole Invariants, and Rigorous Continuum Certification for Riemann's Xi-Function",
+  "upload_type": "publication",
+  "publication_type": "preprint",
+  "description": "<p>We prove that the transverse Wronskian <em>W(d,t) = (1/2) &part;<sub>d</sub>|&Xi;(t &minus; id)|<sup>2</sup></em> of Riemann's completed <em>&Xi;</em>-function satisfies odd transverse parity <em>W(&minus;d,t) = &minus;W(d,t)</em> with identically vanishing even derivatives <em>&part;<sub>d</sub><sup>2k</sup>W(0,t) &equiv; 0</em>, so that the parity-reduced Wronskian <em>W&#771;(d,t) := W(d,t)/d</em> removes the <em>d &rarr; 0<sup>+</sup></em> boundary-layer degeneracy in the Speiser&ndash;Hinkkanen&ndash;Lagarias positivity criterion. Our proof combines a division-free Wigner&ndash;hyperbolic integral representation governed by the monotone kernel <em>sinc<sub>hyp</sub>(dy) = sinh(dy)/(dy) &ge; 1</em>, closed-form Cauchy&ndash;Riemann identities for the higher transverse dipole invariants <em>c<sub>2m&minus;1</sub>(t)</em> and non-singular partial derivatives <em>&nabla;W&#771;</em>, and dual directed-rounding interval evaluators based on Euler&ndash;Maclaurin summation and Jacobi-theta quadrature. Applying two-dimensional interval mean-value enclosures, the integer argument principle, and continuum Lipschitz bounds with IEEE-754 rounding control, we establish strict positivity of the leading dipole moments <em>c<sub>1</sub>(&gamma;<sub>k</sub>), c<sub>3</sub>(&gamma;<sub>k</sub>), c<sub>5</sub>(&gamma;<sub>k</sub>) &gt; 0</em> at the first ten non-trivial zeros and certify the absence of off-critical zeros across 4,987,101 continuum cells covering <em>[0, 0.50] &times; [0, 55]</em>.</p><p>This repository contains the 15-page AMS-LaTeX manuscript, native pdfTeX PDF, 300-DPI vector figures, AI agent skill specification, and standalone directed-rounding interval and GPU verification suite (<code>scripts/verify_paper2_parity_reduced_wronskian.py</code>).</p>",
+  "creators": [
+    {
+      "name": "Missiaen, Thijs",
+      "affiliation": "Independent Researcher, Belgium",
+      "orcid": "0009-0007-3678-0810"
+    }
+  ],
+  "access_right": "open",
+  "license": "MIT",
+  "language": "eng",
+  "keywords": [
+    "Riemann Xi-function",
+    "parity-reduced transverse Wronskian",
+    "hyperbolic sinc kernel",
+    "transverse dipole hierarchy",
+    "Turan inequalities",
+    "Lehmer phenomenon",
+    "directed-rounding interval arithmetic",
+    "integer argument principle",
+    "continuum Lipschitz certification",
+    "MSC 11M06",
+    "MSC 65G30",
+    "MSC 30D15"
+  ],
+  "notes": "AMS-LaTeX preprint (15 pages, 4 tables, 2 figures) with companion mpmath.iv directed-rounding interval and GPU verification suite. Part II of the series on the transverse Wronskian of Riemann's Xi-function (Part I: https://doi.org/10.5281/zenodo.23637324).",
+  "version": "2.0.0"
+}
