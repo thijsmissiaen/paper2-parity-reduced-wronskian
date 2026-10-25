@@ -1,5 +1,6 @@
 # Parity-Reduced Transverse Wronskians, Higher Dipole Invariants, and Rigorous Continuum Certification for Riemann's $\Xi$-Function
 
+**DOI (Zenodo / CERN):** [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23641698.svg)](https://doi.org/10.5281/zenodo.23641698) [`10.5281/zenodo.23641698`](https://doi.org/10.5281/zenodo.23641698)  
 **Author:** Thijs Missiaen (Independent Researcher, Belgium · [ORCID: 0009-0007-3678-0810](https://orcid.org/0009-0007-3678-0810) · `thijs.missiaen@gmail.com`)  
 **Series:** Transverse Wronskian of Riemann's $\Xi$-Function (Paper II of IX · [Paper I DOI: 10.5281/zenodo.23637324](https://doi.org/10.5281/zenodo.23637324))  
 **Repository:** [`https://github.com/thijsmissiaen/paper2-parity-reduced-wronskian`](https://github.com/thijsmissiaen/paper2-parity-reduced-wronskian)  
@@ -7,6 +8,9 @@
 **Manuscript:** [`paper/paper2_parity_reduced_wronskian.pdf`](paper/paper2_parity_reduced_wronskian.pdf) (15 pages, AMS-LaTeX / pdfTeX)
 
 ---
+
+> [!IMPORTANT]
+> **Resolved Classical Bottleneck / Open Problem Context (Critical-Line $0/0$ Boundary-Layer Singularity as $d \to 0^+$):** Because $\Xi(t)$ is real-valued on the critical line $d = 0$, the raw transverse Wronskian $W(d,t) = \frac{1}{2}\partial_d\lvert\Xi(t-\mathrm{i}d)\rvert^2$ vanishes identically on $d = 0$ ($W(0,t) \equiv 0$), creating a $0/0$ singularity in two-dimensional interval-arithmetic certification near the critical line. This paper resolves this singularity analytically via the division-free hyperbolic-sinc kernel $\mathrm{sinc} _ {\mathrm{hyp}}(dy) = \frac{\sinh(dy)}{dy} \ge 1$, the higher transverse dipole hierarchy $c _ {2m-1}(t)$, and a 100% division-free 2D Interval-MVT collar certification architecture.
 
 ## Abstract & Overview
 
