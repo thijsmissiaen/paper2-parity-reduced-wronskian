@@ -26,6 +26,7 @@
     "MSC 65G30",
     "MSC 30D15"
   ],
-  "notes": "AMS-LaTeX preprint (13 pages, 4 tables, 2 figures) with companion mpmath.iv interval benchmark and IEEE-754 float64 cancellation audit. Part II of the series on the transverse Wronskian of Riemann's Xi-function (Part I: https://doi.org/10.5281/zenodo.23637324).",
-  "version": "1.1.0"
+  "notes": "AMS-LaTeX preprint (13 pages, 4 tables, 2 figures) with companion mpmath.iv interval benchmark and IEEE-754 float64 cancellation audit. Part II of the series on the transverse Wronskian of Riemann's Xi-function.",
+  "publication_date": "2026-11-11",
+  "version": "2.1.0"
 }
