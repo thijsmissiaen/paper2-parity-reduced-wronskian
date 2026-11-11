@@ -14,26 +14,35 @@
 
 ## Abstract & Main Identities
 
-Let $\xi(s) = \frac{1}{2}s(s-1)\pi^{-s/2}\Gamma(s/2)\zeta(s)$ be Riemann's completed zeta function with $s = \frac{1}{2} + d + \mathrm{i}t$ ($d = \sigma - \frac{1}{2}$) and $\Xi(t-\mathrm{i}d) := \xi(s) = R(d,t) + \mathrm{i}I _ {\mathrm{im}}(d,t)$. In terms of the canonical Wigner correlation kernel $I(y,t) = \int _ {-\infty}^\infty \Phi(\frac{x+y}{2})\Phi(\frac{x-y}{2})\cos(2tx)\,\mathrm{d}x = 2\pi\mathcal{W} _ \Phi(y/2, 2t)$ established in Paper I, the transverse Wronskian satisfies
+Let $\xi(s) = \frac{1}{2}s(s-1)\pi^{-s/2}\Gamma(s/2)\zeta(s)$ be Riemann's completed zeta function with $s = \frac{1}{2} + d + \mathrm{i}t$ ($d = \sigma - \frac{1}{2}$) and $\Xi(t-\mathrm{i}d) := \xi(s) = R(d,t) + \mathrm{i}I _ {\mathrm{im}}(d,t)$. In terms of the canonical Wigner correlation kernel $I(y,t) = \int _ {-\infty}^\infty \Phi(\frac{x+y}{2})\Phi(\frac{x-y}{2})\cos(2tx) \mathrm{d}x = 2\pi\mathcal{W} _ \Phi(y/2, 2t)$ established in Paper I, the transverse Wronskian satisfies
 
-$$W(d,t) := \frac{1}{2}\frac{\partial}{\partial d}\lvert\Xi(t-\mathrm{i}d)\rvert^2 = R \partial _ t I _ {\mathrm{im}} - I _ {\mathrm{im}} \partial _ t R = 16\int_0^\infty y\sinh(2d y) I(y,t)\,\mathrm{d}y.$$
+$$
+W(d,t) := \frac{1}{2}\frac{\partial}{\partial d}\lvert\Xi(t-\mathrm{i}d)\rvert^2 = R \partial _ t I _ {\mathrm{im}} - I _ {\mathrm{im}} \partial _ t R = 16\int_0^\infty y\sinh(2d y) I(y,t) \mathrm{d}y.
+$$
 
-1. **Canonical Parity-Reduced Wronskian and Classical Laguerre Boundary Value (Proposition 2.1):**
-   By Schwarz reflection $\Xi(t+\mathrm{i}d) = \overline{\Xi(t-\mathrm{i}d)}$, $W(-d,t) = -W(d,t)$ with $\partial_d^{2k}W(0,t) \equiv 0$. Factoring $d$ via $\mathrm{sinc} _ {\mathrm{hyp}}(w) := \frac{\sinh w}{w} = \int_0^1 \cosh(sw)\,\mathrm{d}s \ge 1$ gives
+### 1. Canonical Parity-Reduced Wronskian and Classical Laguerre Boundary Value (Proposition 2.1)
 
-$$\widetilde{W}(d,t) := \frac{W(d,t)}{d} = 32\int_0^\infty y^2 \mathrm{sinc} _ {\mathrm{hyp}}(2d y) I(y,t)\,\mathrm{d}y, \qquad \partial_d\widetilde{W}(0,t) \equiv 0,$$
+By Schwarz reflection $\Xi(t+\mathrm{i}d) = \overline{\Xi(t-\mathrm{i}d)}$, $W(-d,t) = -W(d,t)$ with $\partial_d^{2k}W(0,t) \equiv 0$. Factoring $d$ via $\mathrm{sinc} _ {\mathrm{hyp}}(w) := \frac{\sinh w}{w} = \int_0^1 \cosh(sw) \mathrm{d}s \ge 1$ gives
 
-   with boundary value equal to the classical Laguerre expression $\widetilde{W}(0,t) = L _ 1(\Xi;t) = (\Xi'(t))^2 - \Xi(t)\Xi''(t)$.
+$$
+\widetilde{W}(d,t) := \frac{W(d,t)}{d} = 32\int_0^\infty y^2 \mathrm{sinc} _ {\mathrm{hyp}}(2d y) I(y,t) \mathrm{d}y, \qquad \partial_d\widetilde{W}(0,t) \equiv 0,
+$$
 
-2. **Jensen–Csordas–Varga Moment Hierarchy and Local Multiplicity Jet (Theorem 3.1 & Proposition 3.2):**
-   Expanding $\widetilde{W}(d,t) = \sum _ {m=1}^\infty c _ {2m-1}(t) d^{2m-2}$ links the even canonical Wigner moments to the classical Jensen–Laguerre invariants $L _ m(\Xi;t)$:
+with boundary value equal to the classical Laguerre expression $\widetilde{W}(0,t) = L _ 1(\Xi;t) = (\Xi'(t))^2 - \Xi(t)\Xi''(t)$.
 
-$$c _ {2m-1}(t) = \frac{2^{2m+3}}{(2m-1)!}\int_0^\infty y^{2m}I(y,t)\,\mathrm{d}y = m L _ m(\Xi;t) := m\sum _ {j=0}^{2m}\frac{(-1)^{m+j}}{j! (2m-j)!}\Xi^{(j)}(t)\Xi^{(2m-j)}(t).$$
+### 2. Jensen–Csordas–Varga Moment Hierarchy and Local Multiplicity Jet (Theorem 3.1 & Proposition 3.2)
 
-   At any $m$-fold real zero $t_0 \in \mathbb{R}$, $c _ 1(t_0) = \dots = c _ {2m-3}(t_0) = 0$ and $c _ {2m-1}(t_0) = \frac{m}{(m!)^2}(\Xi^{(m)}(t_0))^2 > 0$. Using $\eta _ {\mathrm{hyp}}(w) := \frac{w\cosh w - \sinh w}{w^3} = \int_0^1\int_0^1 s^2\cosh(s\tau w)\,\mathrm{d}\tau\,\mathrm{d}s \ge \frac{1}{3}$, all mixed $(d,t)$ Taylor remainders of the non-harmonic auxiliaries in $\nabla\widetilde{W}$ are bounded directly by holomorphic strip suprema of $\Xi^{(m)}$ without assuming harmonicity (Proposition 4.1).
+Expanding $\widetilde{W}(d,t) = \sum _ {m=1}^\infty c _ {2m-1}(t) d^{2m-2}$ links the even canonical Wigner moments to the classical Jensen–Laguerre invariants $L _ m(\Xi;t)$:
 
-3. **Explicit Obstructions and IEEE-754 `float64` Cancellation Audit (Sections 5.3 & 6):**
-   Parity reduction holds for *any* real-entire function (including Davenport–Heilbronn $\Xi _ {\mathrm{DH}}$); on an explicit off-critical zero perturbation $F _ {\mathrm{off}}(z)$, $L _ 1(F _ {\mathrm{off}}; t _ *) = -5.10 \times 10^{-11} < 0$. Moreover, Higham's inner-product bound $\lvert\mathrm{fl}(x^\top y) - x^\top y\rvert \le \gamma _ {N _ u}\lvert x\rvert^\top\lvert y\rvert$ shows that `float64` quadrature of $\widehat{W}(d,t) = \mathrm{e}^{\pi t/2}\widetilde{W}(d,t)$ amplifies roundoff error as $u _ {\mathrm{mach}}\mathrm{e}^{+\pi t/4}$, reaching 4.51% error at $t = 55$ and 1,375% error at $t = 60$.
+$$
+c _ {2m-1}(t) = \frac{2^{2m+3}}{(2m-1)!}\int_0^\infty y^{2m}I(y,t) \mathrm{d}y = m L _ m(\Xi;t) := m\sum _ {j=0}^{2m}\frac{(-1)^{m+j}}{j! (2m-j)!}\Xi^{(j)}(t)\Xi^{(2m-j)}(t).
+$$
+
+At any $m$-fold real zero $t_0 \in \mathbb{R}$, $c _ 1(t_0) = \dots = c _ {2m-3}(t_0) = 0$ and $c _ {2m-1}(t_0) = \frac{m}{(m!)^2}(\Xi^{(m)}(t_0))^2 > 0$. Using $\eta _ {\mathrm{hyp}}(w) := \frac{w\cosh w - \sinh w}{w^3} = \int_0^1\int_0^1 s^2\cosh(s\tau w) \mathrm{d}\tau \mathrm{d}s \ge \frac{1}{3}$, all mixed $(d,t)$ Taylor remainders of the non-harmonic auxiliaries in $\nabla\widetilde{W}$ are bounded directly by holomorphic strip suprema of $\Xi^{(m)}$ without assuming harmonicity (Proposition 4.1).
+
+### 3. Explicit Obstructions and IEEE-754 `float64` Cancellation Audit (Sections 5.3 & 6)
+
+Parity reduction holds for *any* real-entire function (including Davenport–Heilbronn $\Xi _ {\mathrm{DH}}$); on an explicit off-critical zero perturbation $F _ {\mathrm{off}}(z)$, $L _ 1(F _ {\mathrm{off}}; t _ {\star}) = -5.10 \times 10^{-11} < 0$. Moreover, Higham's inner-product bound $\lvert\mathrm{fl}(x^\top y) - x^\top y\rvert \le \gamma _ {N _ u}\lvert x\rvert^\top\lvert y\rvert$ shows that `float64` quadrature of $\widehat{W}(d,t) = \mathrm{e}^{\pi t/2}\widetilde{W}(d,t)$ amplifies roundoff error as $u _ {\mathrm{mach}}\mathrm{e}^{+\pi t/4}$, reaching 4.51% error at $t = 55$ and 1,375% error at $t = 60$.
 
 ---
 
