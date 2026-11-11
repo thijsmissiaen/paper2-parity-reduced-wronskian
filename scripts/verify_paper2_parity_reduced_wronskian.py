@@ -4,25 +4,34 @@
 verify_paper2_parity_reduced_wronskian.py
 ===============================================================================
 Verification Suite for Paper II:
-"Parity-Reduced Transverse Wronskians, Higher Dipole Invariants, and Rigorous
-Continuum Certification for Riemann's Xi-Function"
+"Parity-Reduced Transverse Wronskians, Jensen-Laguerre Moment Identities,
+and Division-Free Interval Enclosures for Riemann's Xi-Function"
 
 Author: Thijs Missiaen (ORCID: 0009-0007-3678-0810)
 Date: October 2026
 
-This self-contained script verifies all analytical identities, directed-rounding
-interval enclosures (mpmath.iv), 2D Interval-MVT collar certifications, integer
-Argument Principle winding enclosures, and GPU-accelerated 2D Lipschitz continuum
-bounds presented in Paper II, and generates the two publication figures:
-  1. paper/figures/fig1_parity_reduced_wronskian_and_dipoles.pdf (.png)
-  2. paper/figures/fig2_interval_mvt_and_argument_principle.pdf (.png)
+This self-contained script verifies:
+  1. Canonical Wigner-hyperbolic normalization W(d,t) = 16 int_0^inf y sinh(2dy) I(y,t) dy,
+     W_tilde(d,t) = 32 int_0^inf y^2 sinc_hyp(2dy) I(y,t) dy, and the Jensen-Csordas-Varga
+     moment identities c_{2m-1}(t) = m * L_m(Xi; t) = (2^{2m+3}/(2m-1)!) int_0^inf y^{2m} I(y,t) dy
+     at 50-decimal precision, plus an explicit off-critical zero obstruction model F_off(z).
+  2. Directed-rounding interval enclosures (mpmath.iv) of c_1, c_3, c_5 > 0 at gamma_1..gamma_10.
+  3. Dual mpmath.iv evaluator cross-check (Euler-Maclaurin vs. Jacobi-theta), 80 centered 2D
+     Interval-MVT collar boxes (around gamma_1, tau_1, gamma_2, tau_2, gamma_3 using true roots
+     tau_1 = 15.58570859, tau_2 = 22.09797728 of Xi'(tau_k) = 0 and rigorous holomorphic
+     Cauchy-Taylor bounds without assuming harmonicity of non-harmonic components), and
+     5 integer Argument-Principle rectangles covering [10^-6, 1.20] x [0, 55].
+  4. IEEE-754 float64 cancellation-amplification audit quantifying Higham's |x|^T |y| bound
+     (|Delta W_hat| ~ u_mach * exp(+pi*t/4), reaching 4.51% relative error at t = 55).
+  5. Generation of the two publication figures:
+       paper/figures/fig1_parity_reduced_wronskian_and_dipoles.pdf (.png)
+       paper/figures/fig2_interval_mvt_and_argument_principle.pdf (.png)
 ===============================================================================
 """
 
-import os
+import math
 import sys
 import time
-import math
 from pathlib import Path
 import numpy as np
 import torch
@@ -34,7 +43,6 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 from matplotlib.colors import LogNorm
 
-# Configure arbitrary-precision and directed-rounding interval precision
 iv.dps = 35
 mp.dps = 50
 
@@ -46,9 +54,9 @@ plt.rcParams["axes.linewidth"] = 1.0
 
 
 def print_banner(title: str) -> None:
-    print("=" * 90)
+    print("=" * 92)
     print(f" {title}")
-    print("=" * 90)
+    print("=" * 92)
 
 
 # ==============================================================================
@@ -67,10 +75,10 @@ U4_LIST_IV = [u2 * u2 for u2 in U2_LIST_IV]
 U6_LIST_IV = [u4 * u2 for u4, u2 in zip(U4_LIST_IV, U2_LIST_IV)]
 U8_LIST_IV = [u4 * u4 for u4 in U4_LIST_IV]
 
-# Proven analytical truncation bounds on [0, 1.20] x [0, 55]:
+# Analytical truncation bounds on [0, 1.20] x [0, 55] (Appendix A, Lemma A.1):
 # 1) Jacobi series tail (m > 12): eps_ser <= 1e-220
 # 2) Quadrature domain tail (u > 1.55): eps_tail <= 1e-550
-# 3) Composite trapezoidal discretization error (Trefethen-Weideman strip |Im(u)| <= 0.35): eps_quad <= 1e-55
+# 3) Composite trapezoidal discretization error on |Im(u)| <= 0.35 < pi/8: eps_quad <= 1e-55
 EPS_SER_BOUND = iv.mpf("1e-220")
 EPS_TAIL_BOUND = iv.mpf("1e-550")
 EPS_QUAD_BOUND = iv.mpf("1e-55")
@@ -91,7 +99,6 @@ for _j, _u in enumerate(U_LIST_IV):
     _w = iv.mpf("0.5") if (_j == 0 or _j == NU_IV) else iv.mpf("1.0")
     PHI_W_IV.append(iv.mpf(8) * H_IV * _w * _s)
 
-# Exact rational Bernoulli numbers B_{2k} for Euler-Maclaurin summation
 BERN_IV = {}
 for _k in range(1, 16):
     _p, _q = mpmath.bernfrac(2 * _k)
@@ -100,8 +107,8 @@ for _k in range(1, 16):
 
 def iv_zeta_euler_maclaurin(s, N: int = 28, M: int = 12):
     """
-    Rigorous directed-rounding interval evaluator for zeta(s) via Euler-Maclaurin
-    summation with explicit Backlund-Turing remainder enclosure [-eps_EM, +eps_EM].
+    Directed-rounding interval evaluator for zeta(s) via Euler-Maclaurin
+    summation with explicit remainder enclosure [-eps_EM, +eps_EM].
     """
     s = iv.convert(s)
     total = iv.mpc(0)
@@ -325,17 +332,99 @@ def iv_zetah_scalar(x_iv):
     return ((x2 + iv.mpf(3)) * sh - iv.mpf(3) * x_iv * ch) / x5
 
 
+def _sup_holomorphic_xi_derivs_on_strip(db_iv, t0_iv, dt_iv, max_m: int = 9, K_tay: int = 12):
+    """
+    Rigorously bounds M_m := sup_{delta in [0, db_iv], t in [t0_iv - dt_iv, t0_iv + dt_iv]} |Xi^{(m)}(t - i*delta)|
+    for 0 <= m <= max_m using ONLY the true holomorphicity of Xi^{(m)}(z) in z = t - i*delta!
+    Partitions delta in [0, db_iv] into sub-strips of half-width <= 0.09 and applies the exact
+    complex Cauchy-Taylor remainder bound around each sub-strip center z_c = t0_iv - i*delta_c.
+    """
+    n_strips = max(1, int(math.ceil(float(db_iv.b) / 0.16)))
+    half_del = db_iv / iv.mpf(2 * n_strips)
+    r_disk = iv.sqrt(half_del * half_del + dt_iv * dt_iv)
+
+    # Non-oscillatory tail bound sup_{delta in [0, db], t} |Xi^{(m + K_tay)}(t - i*delta)|
+    total_ord = max_m + K_tay
+    tail_sup = [iv.mpf(0) for _ in range(total_ord + 1)]
+    for j in range(NU_IV + 1):
+        u2 = U2_LIST_IV[j]
+        w = PHI_W_IV[j]
+        ch_ub, _, _ = iv_ch_sinch_etach_scalar(u2 * db_iv)
+        w_ch = w * ch_ub
+        p = iv.mpf(1)
+        for m in range(total_ord + 1):
+            tail_sup[m] += w_ch * p
+            p = p * u2
+    for m in range(total_ord + 1):
+        tail_sup[m] += EPS_TOTAL_TRUNC
+
+    facs = [iv.fac(k) for k in range(K_tay + 1)]
+    r_pows = [iv.mpf(1)]
+    for _ in range(K_tay):
+        r_pows.append(r_pows[-1] * r_disk)
+
+    M_bounds = [iv.mpf(0) for _ in range(max_m + 1)]
+    for s_idx in range(n_strips):
+        del_c = (iv.mpf(2 * s_idx + 1) * half_del)
+        R_m = [iv.mpf(0) for _ in range(total_ord)]
+        I_m = [iv.mpf(0) for _ in range(total_ord)]
+        for j in range(NU_IV + 1):
+            u2 = U2_LIST_IV[j]
+            w = PHI_W_IV[j]
+            arg_d = u2 * del_c
+            ep = iv.exp(arg_d)
+            em = iv.mpf(1) / ep
+            ch_v = (ep + em) * iv.mpf("0.5")
+            sh_v = (ep - em) * iv.mpf("0.5")
+            cs_v = iv.cos(u2 * t0_iv)
+            sn_v = iv.sin(u2 * t0_iv)
+            w_ch = w * ch_v
+            w_sh = w * sh_v
+            p = iv.mpf(1)
+            for m in range(total_ord):
+                mod4 = m % 4
+                if mod4 == 0:
+                    d_cs, d_sn = cs_v, sn_v
+                elif mod4 == 1:
+                    d_cs, d_sn = -sn_v, cs_v
+                elif mod4 == 2:
+                    d_cs, d_sn = -cs_v, -sn_v
+                else:
+                    d_cs, d_sn = sn_v, -cs_v
+                R_m[m] += w_ch * p * d_cs
+                I_m[m] += w_sh * p * d_sn
+                p = p * u2
+        mod_center = []
+        for m in range(total_ord):
+            Rm = R_m[m] + TRUNC_IV
+            Im = I_m[m] + TRUNC_IV
+            mod_center.append(iv.sqrt(Rm * Rm + Im * Im))
+
+        for m in range(max_m + 1):
+            sup_strip = iv.mpf(0)
+            for n in range(K_tay):
+                sup_strip += (r_pows[n] / facs[n]) * mod_center[m + n]
+            sup_strip += (r_pows[K_tay] / facs[K_tay]) * tail_sup[m + K_tay]
+            if sup_strip.b > M_bounds[m].b:
+                M_bounds[m] = iv.mpf(sup_strip.b)
+    return M_bounds
+
+
 def certify_2d_box_mvt_iv(d_a, d_b, t_a, t_b):
     """
-    2D Interval Mean-Value Theorem enclosure on B = [d_a, d_b] x [t_a, t_b]:
-      W_tilde(B) subseteq W_tilde(d_0, t_0) + dW_tilde/dd(B)*[-dd, +dd]
-                                            + dW_tilde/dt(B)*[-dt, +dt],
-    where each component integral F in {R, R_t, R_tt, Itil, Itil_t, Itil_tt, Ihat_d, Ihat_td}
-    is enclosed on B via its exact 1st-order Taylor expansion at (d_0, t_0) (including the
-    exact d-derivatives d(Ihat_d)/dd = d_0*Icheck_dd and d(Ihat_td)/dd = d_0*Icheck_tdd)
-    plus an explicit, rigorous additive 2nd-order Taylor remainder interval [-eps_2, +eps_2]
-    with eps_2 = 0.5 * (M_dd * dd^2 + 2 * M_dt * dd * dt + M_tt * dt^2) computed from
-    rigorous upper bounds M_dd, M_dt, M_tt of the second partial derivatives on B.
+    2D Interval Mean-Value Theorem enclosure on B = [d_a, d_b] x [t_a, t_b] WITHOUT assuming
+    harmonicity of the non-harmonic components Itil or Ihat!
+    Uses the exact positive-weight integral representations:
+      sinc_hyp(w) = int_0^1 cosh(s*w) ds,
+      eta_hyp(w)  = int_0^1 int_0^1 s^2 cosh(s*tau*w) dtau ds,
+    which express every partial derivative d_d^p d_t^q F(d,t) for F in {R, Rt, Rtt, Itil, Itilt,
+    Itiltt, Ihat_d, Ihat_td} directly as weighted integrals of derivatives of the holomorphic
+    function Xi(t - i*delta) over delta in [0, d_b]:
+      |d_d^p d_t^q R^{(k)}(d,t)|    <= M_{p+q+k},
+      |d_d^p d_t^q Itil^{(k)}(d,t)| <= (1/(p+1)) * M_{p+q+k+1},
+      |d_d^p d_t^q Ihat^{(k)}(d,t)| <= (1/((p+3)*(p+1))) * M_{p+q+k+3},
+    where M_m = sup_{delta in [0, d_b], t in [t_a, t_b]} |Xi^{(m)}(t - i*delta)| is enclosed
+    rigorously via complex Cauchy-Taylor expansion of the holomorphic function Xi^{(m)}(z).
     """
     da_iv = iv.convert(d_a)
     db_iv = iv.convert(d_b)
@@ -349,13 +438,11 @@ def certify_2d_box_mvt_iv(d_a, d_b, t_a, t_b):
     sym_dd = iv.mpf([-dd.b, dd.b])
     sym_dt = iv.mpf([-dt.b, dt.b])
 
-    # Evaluate center derivatives up to order K=8 at (d0, t0) and worst-case cosh(2*u*d_b) tail bounds
-    K_ord = 8
-    R_t_derivs = [iv.mpf(0) for _ in range(K_ord + 3)]
-    Itil_t_derivs = [iv.mpf(0) for _ in range(K_ord + 3)]
-    Ihat_t_derivs = [iv.mpf(0) for _ in range(K_ord + 3)]
-    Icheck_t_derivs = [iv.mpf(0) for _ in range(K_ord + 3)]
-    tail_bound_pow = [iv.mpf(0) for _ in range(18)]
+    # Evaluate exact center values and 1st partial derivatives at (d0, t0)
+    R_c = [iv.mpf(0) for _ in range(4)]
+    Itil_c = [iv.mpf(0) for _ in range(4)]
+    Ihat_c = [iv.mpf(0) for _ in range(3)]
+    Icheck_c = [iv.mpf(0) for _ in range(2)]
 
     for j in range(NU_IV + 1):
         u2 = U2_LIST_IV[j]
@@ -363,19 +450,14 @@ def certify_2d_box_mvt_iv(d_a, d_b, t_a, t_b):
         arg_d0 = u2 * d0
         ch0, sinch0, etach0 = iv_ch_sinch_etach_scalar(arg_d0)
         zetah0 = iv_zetah_scalar(arg_d0)
-        ch_ub, _, _ = iv_ch_sinch_etach_scalar(u2 * db_iv)
         cs0 = iv.cos(u2 * t0)
         sn0 = iv.sin(u2 * t0)
 
-        # Powers of u2
         u_pows = [iv.mpf(1)]
-        for _ in range(17):
+        for _ in range(7):
             u_pows.append(u_pows[-1] * u2)
-        for p_idx in range(18):
-            tail_bound_pow[p_idx] += w * u_pows[p_idx] * ch_ub
 
-        for m in range(K_ord + 3):
-            # d^m/dt^m cos(2u t0) and d^m/dt^m sin(2u t0)
+        for m in range(4):
             mod4 = m % 4
             if mod4 == 0:
                 d_cs, d_sn = cs0, sn0
@@ -385,78 +467,61 @@ def certify_2d_box_mvt_iv(d_a, d_b, t_a, t_b):
                 d_cs, d_sn = -cs0, -sn0
             else:
                 d_cs, d_sn = sn0, -cs0
+            R_c[m] += w * u_pows[m] * ch0 * d_cs
+            Itil_c[m] += w * u_pows[m + 1] * sinch0 * d_sn
+            if m < 3:
+                Ihat_c[m] += w * u_pows[m + 3] * etach0 * d_sn
+            if m < 2:
+                Icheck_c[m] += w * u_pows[m + 5] * zetah0 * d_sn
 
-            R_t_derivs[m] += w * u_pows[m] * ch0 * d_cs
-            Itil_t_derivs[m] += w * u_pows[m + 1] * sinch0 * d_sn
-            Ihat_t_derivs[m] += w * u_pows[m + 3] * etach0 * d_sn
-            Icheck_t_derivs[m] += w * u_pows[m + 5] * zetah0 * d_sn
+    for m in range(4):
+        R_c[m] += TRUNC_IV
+        Itil_c[m] += TRUNC_IV
+    for m in range(3):
+        Ihat_c[m] += TRUNC_IV
+    for m in range(2):
+        Icheck_c[m] += TRUNC_IV
 
-    for m in range(K_ord + 3):
-        R_t_derivs[m] += TRUNC_IV
-        Itil_t_derivs[m] += TRUNC_IV
-        Ihat_t_derivs[m] += TRUNC_IV
-        Icheck_t_derivs[m] += TRUNC_IV
+    R0, Rt0, Rtt0 = R_c[0], R_c[1], R_c[2]
+    Itil0, Itilt0, Itiltt0 = Itil_c[0], Itil_c[1], Itil_c[2]
+    Ihat_d0, Ihat_td0 = Ihat_c[0], Ihat_c[1]
+    Icheck_dd0, Icheck_tdd0 = Icheck_c[0], Icheck_c[1]
 
-    R0, Rt0, Rtt0 = R_t_derivs[0], R_t_derivs[1], R_t_derivs[2]
-    Itil0, Itilt0, Itiltt0 = Itil_t_derivs[0], Itil_t_derivs[1], Itil_t_derivs[2]
-    Ihat_d0, Ihat_td0 = Ihat_t_derivs[0], Ihat_t_derivs[1]
-    Icheck_dd0, Icheck_tdd0 = Icheck_t_derivs[0], Icheck_t_derivs[1]
+    # Rigorous holomorphic derivative bounds M_2 .. M_8 on [0, d_b] x [t_a, t_b]
+    M = _sup_holomorphic_xi_derivs_on_strip(db_iv, t0, dt, max_m=8, K_tay=12)
 
-    # Helper to compute rigorous upper bounds M_dd, M_dt, M_tt and additive 2nd-order remainder
-    # eps_2 = 0.5 * (M_dd * dd^2 + 2 * M_dt * dd * dt + M_tt * dt^2)
-    rho_box = dd + dt
-    fac_K_minus_2 = iv.fac(K_ord - 2)
-    rho_pow_K_minus_2 = (rho_box ** (K_ord - 2)) / fac_K_minus_2
+    def _rem2(M_dd, M_dt, M_tt):
+        val = iv.mpf("0.5") * (M_dd * dd * dd + iv.mpf(2) * M_dt * dd * dt + M_tt * dt * dt)
+        return iv.mpf([-val.b, val.b])
 
-    def _eps2_from_bounds(f_dd0, f_dt0, f_tt0, high_derivs, tail_p_idx):
-        # Bound variation of 2nd derivatives across B using Taylor expansion + worst-case cosh(2u*d_b) tail
-        var_2nd = iv.mpf(0)
-        rho_pow = iv.mpf(1)
-        for m in range(3, K_ord):
-            rho_pow = rho_pow * rho_box
-            var_2nd += (rho_pow / iv.fac(m - 2)) * abs(high_derivs[m])
-        var_2nd += rho_pow_K_minus_2 * (tail_bound_pow[tail_p_idx] + iv.mpf("1e-50"))
-        M_dd = (abs(f_dd0) + var_2nd).b
-        M_dt = (abs(f_dt0) + var_2nd).b
-        M_tt = (abs(f_tt0) + var_2nd).b
-        eps2_val = iv.mpf("0.5") * (iv.mpf(M_dd) * dd * dd + iv.mpf(2) * iv.mpf(M_dt) * dd * dt + iv.mpf(M_tt) * dt * dt)
-        return iv.mpf([-eps2_val.b, eps2_val.b])
+    # R^{(k)} (k = 0, 1, 2): |d_d^p d_t^q R^{(k)}| <= M_{p + q + k}
+    eps2_R = _rem2(M[2], M[2], M[2])
+    eps2_Rt = _rem2(M[3], M[3], M[3])
+    eps2_Rtt = _rem2(M[4], M[4], M[4])
 
-    # Second derivatives at center (d0, t0):
-    # For R^{(k)}: d_d^2 R^{(k)} = -R^{(k+2)}, d_d d_t R^{(k)} = d0 * Itil^{(k+2)}, d_t^2 R^{(k)} = R^{(k+2)}
-    eps2_R = _eps2_from_bounds(-R_t_derivs[2], d0 * Itil_t_derivs[2], R_t_derivs[2], R_t_derivs, K_ord)
-    eps2_Rt = _eps2_from_bounds(-R_t_derivs[3], d0 * Itil_t_derivs[3], R_t_derivs[3], R_t_derivs[1:], K_ord + 1)
-    eps2_Rtt = _eps2_from_bounds(-R_t_derivs[4], d0 * Itil_t_derivs[4], R_t_derivs[4], R_t_derivs[2:], K_ord + 2)
+    # Itil^{(k)} (k = 0, 1, 2): |d_d^p d_t^q Itil^{(k)}| <= (1/(p+1)) * M_{p + q + k + 1}
+    one_third = iv.mpf(1) / iv.mpf(3)
+    one_half = iv.mpf("0.5")
+    eps2_Itil = _rem2(one_third * M[3], one_half * M[3], M[3])
+    eps2_Itilt = _rem2(one_third * M[4], one_half * M[4], M[4])
+    eps2_Itiltt = _rem2(one_third * M[5], one_half * M[5], M[5])
 
-    # For Itil^{(k)}: d_d Itil^{(k)} = d0 * Ihat^{(k)}, d_d^2 Itil^{(k)} = Ihat^{(k)} + d0^2 * Icheck^{(k)}
-    eps2_Itil = _eps2_from_bounds(
-        Ihat_t_derivs[0] + d0 * d0 * Icheck_t_derivs[0], d0 * Ihat_t_derivs[1], Itil_t_derivs[2], Itil_t_derivs, K_ord + 1
-    )
-    eps2_Itilt = _eps2_from_bounds(
-        Ihat_t_derivs[1] + d0 * d0 * Icheck_t_derivs[1], d0 * Ihat_t_derivs[2], Itil_t_derivs[3], Itil_t_derivs[1:], K_ord + 2
-    )
-    eps2_Itiltt = _eps2_from_bounds(
-        Ihat_t_derivs[2] + d0 * d0 * Icheck_t_derivs[2], d0 * Ihat_t_derivs[3], Itil_t_derivs[4], Itil_t_derivs[2:], K_ord + 3
-    )
-
-    # For Ihat_d and Ihat_td (including exact d-derivatives d0 * Icheck_dd0 and d0 * Icheck_tdd0):
-    eps2_Ihat_d = _eps2_from_bounds(
-        Icheck_t_derivs[0], d0 * Icheck_t_derivs[1], Ihat_t_derivs[2], Ihat_t_derivs, K_ord + 3
-    )
-    eps2_Ihat_td = _eps2_from_bounds(
-        Icheck_t_derivs[1], d0 * Icheck_t_derivs[2], Ihat_t_derivs[3], Ihat_t_derivs[1:], K_ord + 4
-    )
+    # Ihat^{(k)} (k = 0, 1): |d_d^p d_t^q Ihat^{(k)}| <= (1/((p+3)(p+1))) * M_{p + q + k + 3}
+    one_fifteenth = iv.mpf(1) / iv.mpf(15)
+    one_eighth = iv.mpf("0.125")
+    eps2_Ihat_d = _rem2(one_fifteenth * M[5], one_eighth * M[5], one_third * M[5])
+    eps2_Ihat_td = _rem2(one_fifteenth * M[6], one_eighth * M[6], one_third * M[6])
 
     RB = R0 + (d0 * Itilt0) * sym_dd + Rt0 * sym_dt + eps2_R
     RtB = Rt0 + (d0 * Itiltt0) * sym_dd + Rtt0 * sym_dt + eps2_Rt
-    RttB = Rtt0 + (d0 * Itil_t_derivs[3]) * sym_dd + R_t_derivs[3] * sym_dt + eps2_Rtt
+    RttB = Rtt0 + (d0 * Itil_c[3]) * sym_dd + R_c[3] * sym_dt + eps2_Rtt
 
     ItilB = Itil0 + (d0 * Ihat_d0) * sym_dd + Itilt0 * sym_dt + eps2_Itil
     ItiltB = Itilt0 + (d0 * Ihat_td0) * sym_dd + Itiltt0 * sym_dt + eps2_Itilt
-    ItilttB = Itiltt0 + (d0 * Ihat_t_derivs[2]) * sym_dd + Itil_t_derivs[3] * sym_dt + eps2_Itiltt
+    ItilttB = Itiltt0 + (d0 * Ihat_c[2]) * sym_dd + Itil_c[3] * sym_dt + eps2_Itiltt
 
     Ihat_dB = Ihat_d0 + (d0 * Icheck_dd0) * sym_dd + Ihat_td0 * sym_dt + eps2_Ihat_d
-    Ihat_tdB = Ihat_td0 + (d0 * Icheck_tdd0) * sym_dd + Ihat_t_derivs[2] * sym_dt + eps2_Ihat_td
+    Ihat_tdB = Ihat_td0 + (d0 * Icheck_tdd0) * sym_dd + Ihat_c[2] * sym_dt + eps2_Ihat_td
 
     W0 = R0 * Itilt0 - Itil0 * Rt0
     dW_dtB = RB * ItilttB - ItilB * RttB
@@ -521,13 +586,8 @@ def iv_atan(x_iv):
 
 def certify_cauchy_winding_box_iv(d_min, d_max, t_min, t_max, n_pts_t: int = 80, n_pts_d: int = 24):
     """
-    Integer Argument Principle enclosure N_zeros(Omega) in Z on Omega = [d_min, d_max] x [t_min, t_max],
-    with rigorous continuum segment certification: on every segment [z_j, z_{j+1}],
-      (1) D_j = R_j*R_{j+1} + I_j*I_{j+1} > 0,
-      (2) min(|Xi(z_j)|, |Xi(z_{j+1})|) - 0.5 * |z_{j+1}-z_j| * sup_{z in [z_j,z_{j+1}]} |Xi'(z)| > 0,
-      (3) Re(conj(Xi(z_j)) * Xi(z)) >= |Xi(z_j)|^2 - |z_{j+1}-z_j| * |Xi(z_j)| * sup |Xi'| > 0,
-    where sup_{z in [z_j, z_{j+1}]} |Xi'(z)| is bounded via Taylor expansion around z_j and z_{j+1}
-    with explicit worst-case remainder using |cos|, |sin| <= 1 and cosh(2*u*d) <= cosh(2*u*d_max).
+    Integer Argument Principle enclosure N_zeros(Omega) in Z on Omega = [d_min, d_max] x [t_min, t_max]
+    with continuum segment certification along every boundary segment [z_j, z_{j+1}].
     """
     dm = iv.mpf(str(d_min))
     dM = iv.mpf(str(d_max))
@@ -556,7 +616,6 @@ def certify_cauchy_winding_box_iv(d_min, d_max, t_min, t_max, n_pts_t: int = 80,
         pts.append((dM - frac * (dM - dm), tM))
 
     t_top_nodes = [tM - (iv.mpf(k) / iv.mpf(n_pts_t)) * (tM - tm) for k in range(n_pts_t)]
-    # Geometric mesh around each critical-line zero gamma_k so |dt| <= 0.35 * sqrt((t-gamma_k)^2 + d_min^2)
     geom_offsets = [0.0, 0.3, -0.3]
     val_g = 0.6
     while val_g * float(dm.mid) < 0.12:
@@ -712,7 +771,6 @@ def certify_cauchy_winding_box_iv(d_min, d_max, t_min, t_max, n_pts_t: int = 80,
                 best_sup = iv.mpf(s_val.b)
         return h_seg, best_sup
 
-    # Adaptive segment refinement to guarantee continuum positivity on every segment [z_j, z_{j+1}]
     refined_pts = [pts[0]]
     for idx_p in range(len(pts) - 1):
         stack = [(pts[idx_p], pts[idx_p + 1], 0)]
@@ -724,8 +782,6 @@ def certify_cauchy_winding_box_iv(d_min, d_max, t_min, t_max, n_pts_t: int = 80,
             R2, I2, mod2, _ = v2
             dot_prod = R1 * R2 + I1 * I2
             h_seg, sup_Xip = _sup_Xip_on_segment(p1, p2, v1, v2)
-            # Check (1) dot_prod.a > 0, (2) min(|Xi_1|,|Xi_2|) - 0.5*h*sup|Xi'| > 0,
-            # and (3) Re(conj(Xi_1)*Xi(z)) >= |Xi_1|*(|Xi_1| - h*sup|Xi'|) > 0
             min_mod12 = iv.mpf(min(mod1.a, mod2.a))
             seg_margin_half = min_mod12 - iv.mpf("0.5") * h_seg * sup_Xip
             re_margin_full = mod1 - h_seg * sup_Xip
@@ -772,24 +828,31 @@ def certify_cauchy_winding_box_iv(d_min, d_max, t_min, t_max, n_pts_t: int = 80,
 
 
 # ==============================================================================
-# SECTION 2: ARBITRARY-PRECISION (mpmath) WIGNER MOMENT VERIFICATION
+# SECTION 2: CANONICAL WIGNER MOMENTS & OFF-CRITICAL OBSTRUCTION MODEL (mpmath)
 # ==============================================================================
 
-def verify_wigner_dipole_moments_mpmath():
+def xi_exact_mp(z):
+    s = mp.mpf("0.5") + mp.j * z
+    return mp.mpf("0.5") * s * (s - 1) * mp.power(mp.pi, -s / 2) * mp.gamma(s / 2) * mp.zeta(s)
+
+
+def verify_wigner_dipole_moments_and_obstruction_mpmath():
     """
-    Verifies to 45+ decimal places that the Wigner moment integrals
-      c_1(t) = (1/2)   int_0^inf y^2 I(y,t) dy
-      c_3(t) = (1/12)  int_0^inf y^4 I(y,t) dy
-      c_5(t) = (1/240) int_0^inf y^6 I(y,t) dy
-    and the division-free Wigner-hyperbolic representation
-      W_tilde(d,t) = (1/2) int_0^inf y^2 sinc_hyp(d*y) I(y,t) dy
-    match the closed-form Cauchy-Riemann derivative identities on [0, inf).
+    Verifies to 48+ decimal places the CANONICAL Wigner-hyperbolic identities:
+      W(d,t)       = 16 int_0^inf y sinh(2dy) I(y,t) dy
+      W_tilde(d,t) = 32 int_0^inf y^2 sinc_hyp(2dy) I(y,t) dy
+      c_1(t) = L_1(Xi; t)   = 32      int_0^inf y^2 I(y,t) dy = (Xi')^2 - Xi*Xi''
+      c_3(t) = 2*L_2(Xi; t) = (64/3)  int_0^inf y^4 I(y,t) dy
+      c_5(t) = 3*L_3(Xi; t) = (64/15) int_0^inf y^6 I(y,t) dy,
+    computes the true roots tau_1, tau_2 of Xi'(tau) = 0, AND demonstrates on an explicit
+    real-entire off-critical zero model F_off(z) that parity reduction and Jensen-Laguerre
+    algebra hold identically while L_1(F_off; t_star) < 0 and W_tilde_{F_off}(d, t_star) < 0!
     """
-    # Using trapezoidal quadrature on u in [0, 1.55] with 180 nodes at 50 dps
     Nu = 180
     Umax = mp.mpf("1.55")
     du = Umax / Nu
     u_nodes = [mp.mpf(j) * du for j in range(Nu + 1)]
+    phi_vals = []
     phi_w = []
     for j, u in enumerate(u_nodes):
         e4 = mp.exp(4 * u)
@@ -801,12 +864,12 @@ def verify_wigner_dipole_moments_mpmath():
             m4 = m2 * m2
             s += (2 * mp.pi**2 * m4 * e9 - 3 * mp.pi * m2 * e5) * mp.exp(-mp.pi * m2 * e4)
         w = mp.mpf("0.5") if (j == 0 or j == Nu) else mp.mpf("1.0")
+        phi_vals.append(s)
         phi_w.append(8 * du * w * s)
 
     t_test = mp.zetazero(1).imag
     d_test = mp.mpf("0.20")
 
-    # Compute derivatives Xi^(0)..Xi^(6) at t = gamma_1
     D = [mp.mpf(0) for _ in range(7)]
     for j, u in enumerate(u_nodes):
         u2 = 2 * u
@@ -825,31 +888,35 @@ def verify_wigner_dipole_moments_mpmath():
     c3_cr = (D[0] * D[4] - 4 * D[1] * D[3] + 3 * D[2]**2) / 6
     c5_cr = (-D[0] * D[6] + 6 * D[1] * D[5] - 15 * D[2] * D[4] + 10 * D[3]**2) / 120
 
-    # Double-sum Wigner moment evaluation over R^2 folded onto [0, inf)^2:
-    # The four quadrants (+-u_j, +-u_k) have mirror shifts y_- = 2(u_j - u_k), x_+ = 2(u_j + u_k)
-    # and y_+ = 2(u_j + u_k), x_- = 2(u_j - u_k), each with weight 1/4.
+    # Folded canonical double integral over (u, v) in [0, inf)^2 with x = u - v, y = u + v:
+    # Since Xi(t - i*d) = 4 int_R Phi(u) e^{2(d + i*t)u} du, we have
+    #   |Xi(t - i*d)|^2 = 16 int_0^inf cosh(2dy) I(y,t) dy
+    #   W(d,t)          = 16 int_0^inf y sinh(2dy) I(y,t) dy
+    #   W_tilde(d,t)    = 32 int_0^inf y^2 sinc_hyp(2dy) I(y,t) dy
+    #   c_{2m-1}(t)     = (2^{2m+3} / (2m-1)!) int_0^inf y^{2m} I(y,t) dy.
     c1_wig = mp.mpf(0)
     c3_wig = mp.mpf(0)
     c5_wig = mp.mpf(0)
+    W_raw_wig = mp.mpf(0)
     W_tilde_wig = mp.mpf(0)
 
     for j in range(Nu + 1):
-        wj = 2 * u_nodes[j]
+        uj = u_nodes[j]
         pwj = phi_w[j]
         for k in range(Nu + 1):
-            wk = 2 * u_nodes[k]
-            pw = mp.mpf("0.25") * pwj * phi_w[k]
-            for y_val, x_val in ((wj - wk, wj + wk), (wj + wk, wj - wk)):
-                weight_I = pw * mp.cos(t_test * x_val)
+            uk = u_nodes[k]
+            pw_pair = pwj * phi_w[k]  # = 64 * du * dv * w_j * w_k * Phi(u_j) * Phi(u_k)
+            for y_val, x_val in ((uj - uk, uj + uk), (uj + uk, uj - uk)):
+                w_cos = pw_pair * mp.cos(2 * t_test * x_val)
                 y2 = y_val * y_val
-                c1_wig += y2 * weight_I
-                c3_wig += (mp.mpf(1) / mp.mpf(6)) * (y2 * y2) * weight_I
-                c5_wig += (mp.mpf(1) / mp.mpf(120)) * (y2 * y2 * y2) * weight_I
-                dy = d_test * y_val
-                sinch_dy = mp.mpf(1) if dy == 0 else mp.sinh(dy) / dy
-                W_tilde_wig += y2 * sinch_dy * weight_I
+                arg_2dy = 2 * d_test * y_val
+                c1_wig += y2 * w_cos
+                c3_wig += (mp.mpf(2) / mp.mpf(3)) * (y2 * y2) * w_cos
+                c5_wig += (mp.mpf(2) / mp.mpf(15)) * (y2 * y2 * y2) * w_cos
+                W_raw_wig += mp.mpf("0.5") * y_val * mp.sinh(arg_2dy) * w_cos
+                sinch_2dy = mp.mpf(1) if arg_2dy == 0 else mp.sinh(arg_2dy) / arg_2dy
+                W_tilde_wig += y2 * sinch_2dy * w_cos
 
-    # Direct Cauchy-Riemann evaluation of W_tilde(d_test, t_test)
     R_d = mp.mpf(0)
     Rt_d = mp.mpf(0)
     Itil_d = mp.mpf(0)
@@ -867,17 +934,49 @@ def verify_wigner_dipole_moments_mpmath():
         Itil_d += w * u2 * shc * sn
         Itilt_d += w * (u2**2) * shc * cs
     W_tilde_cr = R_d * Itilt_d - Itil_d * Rt_d
+    W_raw_cr = d_test * W_tilde_cr
 
-    res_W = abs(W_tilde_wig - W_tilde_cr)
-    res_c1 = abs(c1_wig - c1_cr)
-    res_c3 = abs(c3_wig - c3_cr)
-    res_c5 = abs(c5_wig - c5_cr)
+    # True critical-line extrema tau_1, tau_2 where Xi'(tau_k) = 0
+    tau1 = mp.findroot(lambda t: mp.diff(xi_exact_mp, t).real, mp.mpf("15.5857"))
+    tau2 = mp.findroot(lambda t: mp.diff(xi_exact_mp, t).real, mp.mpf("22.0980"))
+
+    # Explicit off-critical zero obstruction model F_off(z):
+    # Replace the conjugate symmetric quartet {+-gamma_1, +-gamma_2} of Xi(z) by off-line zeros
+    # {+-(t_star +- i*d_star)} with t_star = (gamma_1 + gamma_2)/2, d_star = 0.15:
+    g1 = mp.zetazero(1).imag
+    g2 = mp.zetazero(2).imag
+    t_star = mp.mpf("0.5") * (g1 + g2)
+    d_star = mp.mpf("0.15")
+    z_star = t_star - mp.j * d_star
+
+    def F_off(z):
+        num = (z - z_star) * (z - mp.conj(z_star)) * (z + z_star) * (z + mp.conj(z_star))
+        den = (z * z - g1 * g1) * (z * z - g2 * g2)
+        return xi_exact_mp(z) * (num / den)
+
+    F0 = F_off(t_star).real
+    Fp = mp.diff(F_off, t_star, 1).real
+    Fpp = mp.diff(F_off, t_star, 2).real
+    L1_F_off = Fp**2 - F0 * Fpp
+    # Check W_tilde_{F_off}(0, t_star) == L1_F_off < 0 via finite/analytic d-derivative:
+    Wtil_F_d0 = (mp.mpf("0.5") * mp.diff(lambda d: abs(F_off(t_star - mp.j * d))**2, mp.mpf(0), 2)) * mp.mpf("0.5")
+    # Note: |F(t - id)|^2 = |F(t)|^2 + L_1(F; t)*d^2 + O(d^4), so (1/2)*(1/2)*d^2/dd^2 |F|^2|_{d=0}?
+    # Wait: d/dd |F|^2 = 2*L_1*d + ..., d^2/dd^2 |F|^2|_{d=0} = 2*L_1, so (1/2)*d^2/dd^2 |F|^2 = L_1!
+    Wtil_F_d0 = mp.mpf("0.5") * mp.diff(lambda d: abs(F_off(t_star - mp.j * d))**2, mp.mpf(0), 2)
+
     return {
         "W_tilde_cr": W_tilde_cr,
-        "res_W": res_W,
-        "res_c1": res_c1,
-        "res_c3": res_c3,
-        "res_c5": res_c5,
+        "res_W_raw": abs(W_raw_wig - W_raw_cr),
+        "res_W": abs(W_tilde_wig - W_tilde_cr),
+        "res_c1": abs(c1_wig - c1_cr),
+        "res_c3": abs(c3_wig - c3_cr),
+        "res_c5": abs(c5_wig - c5_cr),
+        "tau1": tau1,
+        "tau2": tau2,
+        "t_star": t_star,
+        "d_star": d_star,
+        "L1_F_off": L1_F_off,
+        "res_L1_F_off": abs(Wtil_F_d0 - L1_F_off),
     }
 
 
@@ -887,7 +986,7 @@ def verify_wigner_dipole_moments_mpmath():
 
 def main():
     t0_global = time.time()
-    print_banner("PAPER II VERIFICATION SUITE: PARITY-REDUCED WRONSKIANS & CONTINUUM CERTIFICATION")
+    print_banner("PAPER II VERIFICATION SUITE: PARITY-REDUCED WRONSKIANS & INTERVAL ENCLOSURES")
     cuda_ok = torch.cuda.is_available()
     device = torch.device("cuda:0" if cuda_ok else "cpu")
     dev_name = torch.cuda.get_device_name(0) if cuda_ok else "CPU"
@@ -896,27 +995,33 @@ def main():
     print(f"[*] Working Precision         : mp.dps = {mp.dps}, iv.dps = {iv.dps}")
 
     # --------------------------------------------------------------------------
-    # STEP 1: WIGNER-HYPERBOLIC & CAUCHY-RIEMANN DIPOLE EQUIVALENCE
+    # STEP 1: CANONICAL WIGNER-HYPERBOLIC & JENSEN-LAGUERRE MOMENT EQUIVALENCE
     # --------------------------------------------------------------------------
-    print("\n" + "-" * 90)
-    print(" STEP 1: EXACT EQUIVALENCE OF WIGNER MOMENTS AND CAUCHY-RIEMANN DIPOLE IDENTITIES")
-    print("-" * 90)
-    wig_check = verify_wigner_dipole_moments_mpmath()
+    print("\n" + "-" * 92)
+    print(" STEP 1: CANONICAL WIGNER MOMENTS, JENSEN-LAGUERRE IDENTITIES & OFF-LINE OBSTRUCTION")
+    print("-" * 92)
+    wig_check = verify_wigner_dipole_moments_and_obstruction_mpmath()
+    print(f"  |W_raw_Wigner   - W_raw_CR|   at (0.20, gamma_1) : {float(wig_check['res_W_raw']):.3e}")
     print(f"  |W_tilde_Wigner - W_tilde_CR| at (0.20, gamma_1) : {float(wig_check['res_W']):.3e}")
-    print(f"  |c_1_Wigner     - c_1_CR|     at t = gamma_1     : {float(wig_check['res_c1']):.3e}")
-    print(f"  |c_3_Wigner     - c_3_CR|     at t = gamma_1     : {float(wig_check['res_c3']):.3e}")
-    print(f"  |c_5_Wigner     - c_5_CR|     at t = gamma_1     : {float(wig_check['res_c5']):.3e}")
+    print(f"  |c_1_Wigner     - L_1(Xi)|    at t = gamma_1     : {float(wig_check['res_c1']):.3e}")
+    print(f"  |c_3_Wigner     - 2*L_2(Xi)|  at t = gamma_1     : {float(wig_check['res_c3']):.3e}")
+    print(f"  |c_5_Wigner     - 3*L_3(Xi)|  at t = gamma_1     : {float(wig_check['res_c5']):.3e}")
+    print(f"  True critical-line extrema Xi'(tau_k) = 0        : tau_1 = {mp.nstr(wig_check['tau1'], 12)}, tau_2 = {mp.nstr(wig_check['tau2'], 12)}")
+    print(f"  Off-line model F_off at (d*=0.15, t*={float(wig_check['t_star']):.4f}): L_1(F_off; t*) = {float(wig_check['L1_F_off']):+.6e} < 0 (|res|={float(wig_check['res_L1_F_off']):.2e})")
+    assert wig_check["res_W_raw"] < mp.mpf("1e-48")
     assert wig_check["res_W"] < mp.mpf("1e-48")
     assert wig_check["res_c1"] < mp.mpf("1e-48")
     assert wig_check["res_c3"] < mp.mpf("1e-48")
     assert wig_check["res_c5"] < mp.mpf("1e-48")
+    assert wig_check["L1_F_off"] < 0
+    assert wig_check["res_L1_F_off"] < mp.mpf("1e-45")
 
     # --------------------------------------------------------------------------
-    # STEP 2: TABLE 1 — INTERVAL CERTIFICATION OF c_1, c_3, c_5 AT ZEROS gamma_1..gamma_10
+    # STEP 2: TABLE 2 — INTERVAL ENCLOSURES OF c_1, c_3, c_5 AT ZEROS gamma_1..gamma_10
     # --------------------------------------------------------------------------
-    print("\n" + "-" * 90)
-    print(" STEP 2: DIRECTED-ROUNDING INTERVAL CERTIFICATION OF c_1, c_3, c_5 AT gamma_1..gamma_10")
-    print("-" * 90)
+    print("\n" + "-" * 92)
+    print(" STEP 2: DIRECTED-ROUNDING INTERVAL ENCLOSURES OF c_1, c_3, c_5 AT gamma_1..gamma_10")
+    print("-" * 92)
     hdr_t1 = (f"  {'Zero':<8} | {'gamma_k (mid)':>12} | {'IVT Root':>10} | "
               f"{'c_1(gamma_k).a':>18} | {'c_3(gamma_k).a':>18} | {'c_5(gamma_k).a':>18} | {'c_3/c_1':>8}")
     print(hdr_t1)
@@ -952,22 +1057,22 @@ def main():
         c5_hat = c5_iv * env_iv
         ratio_31 = float(c3_iv.a) / float(c1_iv.b)
         dipole_cert_data.append((k, float(gk_mp), c1_iv, c3_iv, c5_iv, c1_hat, c3_hat, c5_hat, ratio_31))
-        print(f"  gamma_{k:<2d} | {float(gk_mp):>12.6f} | {'CERTIFIED':>10} | "
+        print(f"  gamma_{k:<2d} | {float(gk_mp):>12.6f} | {'ENCLOSED':>10} | "
               f"{float(c1_iv.a):>+18.10e} | {float(c3_iv.a):>+18.10e} | {float(c5_iv.a):>+18.10e} | {ratio_31:>8.4f}")
 
     # --------------------------------------------------------------------------
     # STEP 3: DUAL INTERVAL EVALUATOR CROSS-CHECK, 80 2D MVT BOXES & ARGUMENT PRINCIPLE
     # --------------------------------------------------------------------------
-    print("\n" + "-" * 90)
+    print("\n" + "-" * 92)
     print(" STEP 3A: DUAL EVALUATOR CROSS-CHECK (EULER-MACLAURIN vs JACOBI-THETA IN mpmath.iv)")
-    print("-" * 90)
+    print("-" * 92)
     test_points = [
         (iv.mpf("0.00"), iv.mpf("14.13472514"), "Critical line at gamma_1"),
         (iv.mpf("0.10"), iv.mpf("14.13472514"), "Inner collar d=0.10 at gamma_1"),
-        (iv.mpf("0.25"), iv.mpf("17.84559954"), "Mid-strip d=0.25 at extremum tau_1"),
+        (iv.mpf("0.25"), iv.mpf("15.58570859"), "Mid-strip d=0.25 at extremum tau_1"),
         (iv.mpf("0.35"), iv.mpf("21.02203964"), "Outer collar d=0.35 at gamma_2"),
+        (iv.mpf("0.25"), iv.mpf("22.09797728"), "Mid-strip d=0.25 at extremum tau_2"),
         (iv.mpf("0.50"), iv.mpf("25.01085758"), "Strip boundary d=0.50 at gamma_3"),
-        (iv.mpf("0.20"), iv.mpf("32.93506159"), "Inner strip d=0.20 at gamma_5"),
         (iv.mpf("0.45"), iv.mpf("49.77383248"), "Outer strip d=0.45 at gamma_10"),
     ]
     for d_pt, t_pt, desc in test_points:
@@ -978,19 +1083,18 @@ def main():
         overlap_re = max(xi_em.real.a, xi_jac.real.a) <= min(xi_em.real.b, xi_jac.real.b)
         overlap_im = max(xi_em.imag.a, xi_jac.imag.a) <= min(xi_em.imag.b, xi_jac.imag.b)
         assert overlap_re and overlap_im and (w_til.a > 0)
-        w_re = float(xi_jac.real.b - xi_jac.real.a)
         w_wt = float(w_til.b - w_til.a)
         print(f"  ({float(d_pt.mid):.2f}, {float(t_pt.mid):>8.4f}) | {desc:<34} | "
               f"W_tilde.a = {float(w_til.a):+.10e} | width = {w_wt:.3e} | OVERLAP OK")
 
-    print("\n" + "-" * 90)
-    print(" STEP 3B: 80 2D INTERVAL-MVT COLLAR BOXES & 5 MACRO ARGUMENT-PRINCIPLE RECTANGLES")
-    print("-" * 90)
+    print("\n" + "-" * 92)
+    print(" STEP 3B: COLLAR BOXES (NON-HARMONIC-SAFE MVT) & 5 ARGUMENT-PRINCIPLE RECTANGLES")
+    print("-" * 92)
     critical_zones = [
         ("Zone 1: Collar around gamma_1 (t=14.1347)", 14.115, 14.155),
-        ("Zone 2: Collar around extremum tau_1 (t=17.8456)", 17.825, 17.865),
+        ("Zone 2: Collar around extremum tau_1 (t=15.5857)", 15.565, 15.605),
         ("Zone 3: Collar around gamma_2 (t=21.0220)", 21.002, 21.042),
-        ("Zone 4: Collar around extremum tau_2 (t=23.1703)", 23.150, 23.190),
+        ("Zone 4: Collar around extremum tau_2 (t=22.0980)", 22.078, 22.118),
         ("Zone 5: Collar around gamma_3 (t=25.0109)", 24.991, 25.031),
     ]
     d_edges = [iv.mpf("0.00"), iv.mpf("0.10"), iv.mpf("0.22"), iv.mpf("0.35"), iv.mpf("0.50")]
@@ -1009,7 +1113,7 @@ def main():
                 zone_boxes.extend(sub_boxes)
         min_box_a = min(float(b[5].a) for b in zone_boxes)
         min_hat_a = min(float(b[5].a) * math.exp(0.5 * math.pi * 0.5 * (b[2] + b[3])) for b in zone_boxes)
-        assert min_box_a > 0.0
+        assert min_box_a > 0.0, f"Failed positivity in {z_name}: min_box_a = {min_box_a}"
         all_certified_boxes.extend([(z_name, b) for b in zone_boxes])
         print(f"  {z_name:<48} | Boxes: {len(zone_boxes):>2d} | min W_box.a = {min_box_a:+.6e} | min W_hat.a = {min_hat_a:+.4f}")
 
@@ -1031,19 +1135,17 @@ def main():
               f"seg_margin = {min_seg_mar:+.2e} => N_zeros == 0")
 
     # --------------------------------------------------------------------------
-    # STEP 4: GPU 2D LIPSCHITZ CONTINUUM CERTIFICATION (4,987,101 CELLS)
+    # STEP 4: GPU LANDSCAPE VISUALIZATION & IEEE-754 FLOAT64 CANCELLATION AUDIT
     # --------------------------------------------------------------------------
-    print("\n" + "-" * 90)
-    print(" STEP 4: GPU-ACCELERATED 2D LIPSCHITZ CONTINUUM CERTIFICATION (4,987,101 CELLS)")
-    print("-" * 90)
+    print("\n" + "-" * 92)
+    print(" STEP 4: IEEE-754 FLOAT64 CANCELLATION-AMPLIFICATION AUDIT vs 50-DPS MPMATH")
+    print("-" * 92)
     t_gpu_start = time.time()
-    Nd, Nt, Nu = 400, 12500, 4096
+    Nd, Nt, Nu = 201, 4501, 4096
     d_vec = torch.linspace(0.0, 0.50, Nd, device=device, dtype=torch.float64)
-    t_vec = torch.linspace(0.0, 55.0, Nt, device=device, dtype=torch.float64)
+    t_vec = torch.linspace(0.0, 45.0, Nt, device=device, dtype=torch.float64)
     u_vec = torch.linspace(0.0, 2.00, Nu, device=device, dtype=torch.float64)
     du = (u_vec[1] - u_vec[0]).item()
-    dd = (d_vec[1] - d_vec[0]).item()
-    dt = (t_vec[1] - t_vec[0]).item()
 
     phi_u = torch.zeros_like(u_vec)
     e4 = torch.exp(4.0 * u_vec)
@@ -1059,7 +1161,6 @@ def main():
     w_base = 8.0 * phi_u * trap_w * du
     u2_f = 2.0 * u_vec
     u4_f = 4.0 * (u_vec ** 2)
-    u6_f = 8.0 * (u_vec ** 3)
 
     arg_d = 2.0 * d_vec.unsqueeze(1) * u_vec.unsqueeze(0)
     A_cosh = torch.cosh(arg_d) * w_base.unsqueeze(0)
@@ -1068,13 +1169,7 @@ def main():
         1.0 + (arg_d ** 2) / 6.0 + (arg_d ** 4) / 120.0,
         torch.sinh(arg_d) / torch.clamp(arg_d, min=1.0e-30),
     )
-    etach_d = torch.where(
-        arg_d < 1.0e-2,
-        (1.0 / 3.0) + (arg_d ** 2) / 30.0 + (arg_d ** 4) / 840.0 + (arg_d ** 6) / 45360.0,
-        (arg_d * torch.cosh(arg_d) - torch.sinh(arg_d)) / torch.clamp(arg_d ** 3, min=1.0e-30),
-    )
     A_sinch = sinch_d * (w_base * u2_f).unsqueeze(0)
-    A_etach = etach_d * (w_base * u6_f).unsqueeze(0)
 
     arg_t = 2.0 * u_vec.unsqueeze(1) * t_vec.unsqueeze(0)
     B_cos = torch.cos(arg_t)
@@ -1085,125 +1180,132 @@ def main():
     Rtt_gpu = -torch.matmul(A_cosh * u4_f.unsqueeze(0), B_cos)
     Itil_gpu = torch.matmul(A_sinch, B_sin)
     Itilt_gpu = torch.matmul(A_sinch * u2_f.unsqueeze(0), B_cos)
-    Itiltt_gpu = -torch.matmul(A_sinch * u4_f.unsqueeze(0), B_sin)
-    Ihat_d_gpu = torch.matmul(A_etach, B_sin)
-    Ihat_td_gpu = torch.matmul(A_etach * u2_f.unsqueeze(0), B_cos)
-    del B_cos, B_sin, arg_t, arg_d, A_cosh, A_sinch, A_etach, sinch_d, etach_d
 
-    # Exact division-free analytical formulas (3.10)-(3.12) on the GPU
     W_tilde_gpu = R_gpu * Itilt_gpu - Itil_gpu * Rt_gpu
-    dW_tilde_dt_gpu = R_gpu * Itiltt_gpu - Itil_gpu * Rtt_gpu
-    dW_tilde_dd_gpu = d_vec.unsqueeze(1) * (
-        Itilt_gpu * Itilt_gpu - Itil_gpu * Itiltt_gpu + R_gpu * Ihat_td_gpu - Ihat_d_gpu * Rt_gpu
-    )
-    del Itil_gpu, Itilt_gpu, Itiltt_gpu, Ihat_d_gpu, Ihat_td_gpu
-
     env_t = torch.exp(0.5 * math.pi * t_vec).unsqueeze(0)
     W_hat_gpu = W_tilde_gpu * env_t
-    dW_hat_dd = dW_tilde_dd_gpu * env_t
-    dW_hat_dt = (0.5 * math.pi * W_tilde_gpu + dW_tilde_dt_gpu) * env_t
-    del dW_tilde_dd_gpu, dW_tilde_dt_gpu
-
-    W_hat_mid = 0.25 * (W_hat_gpu[:-1, :-1] + W_hat_gpu[1:, :-1] + W_hat_gpu[:-1, 1:] + W_hat_gpu[1:, 1:])
-    grad_d_max = 1.05 * torch.maximum(
-        torch.maximum(torch.abs(dW_hat_dd[:-1, :-1]), torch.abs(dW_hat_dd[1:, :-1])),
-        torch.maximum(torch.abs(dW_hat_dd[:-1, 1:]), torch.abs(dW_hat_dd[1:, 1:]))
-    )
-    grad_t_max = 1.05 * torch.maximum(
-        torch.maximum(torch.abs(dW_hat_dt[:-1, :-1]), torch.abs(dW_hat_dt[1:, :-1])),
-        torch.maximum(torch.abs(dW_hat_dt[:-1, 1:]), torch.abs(dW_hat_dt[1:, 1:]))
-    )
-
-    eps_ulp_hat = 1.0e-9 * torch.ones_like(W_hat_mid) + 1.0e-11 * W_hat_mid
-    lipschitz_margin = grad_d_max * (0.5 * dd) + grad_t_max * (0.5 * dt) + eps_ulp_hat
-    W_hat_lower = W_hat_mid - lipschitz_margin
-
     if cuda_ok:
         torch.cuda.synchronize()
     gpu_elapsed = time.time() - t_gpu_start
+    print(f"  [*] Exploratory float64 landscape on [0, 0.50] x [0, 45] ({Nd} x {Nt}) evaluated in {gpu_elapsed:.3f} s")
 
-    total_cells = W_hat_lower.numel()
-    cert_cells = int(torch.sum(W_hat_lower > 0).item())
-    min_mid = W_hat_mid.min().item()
-    min_low = W_hat_lower.min().item()
-    j_t10 = int(torch.argmin(torch.abs(t_vec - 10.0)).item())
-    min_low_osc = W_hat_lower[:, j_t10:].min().item()
-    max_rel_margin = torch.max(lipschitz_margin / W_hat_mid).item() * 100.0
-    print(f"  [*] Grid evaluated in {gpu_elapsed:.3f} s: {Nd} x {Nt} = {Nd*Nt:,} nodes ({total_cells:,} cells)")
-    print(f"  [*] Certified cells (W_hat_lower > 0): {cert_cells:,} / {total_cells:,} (100.0000%)")
-    print(f"  [*] Global min cell midpoint W_hat_mid (at t=0)  : +{min_mid:.6e}")
-    print(f"  [*] Global min certified bound W_low   (at t=0)  : +{min_low:.6e}")
-    print(f"  [*] Oscillatory regime min W_low (t in [10, 55]) : +{min_low_osc:.6e}")
-    print(f"  [*] Max relative Lipschitz+ULP margin            : {max_rel_margin:.2f}%")
-    assert cert_cells == total_cells
+    # Pointwise float64 vs 50-dps mpmath audit across t in [10, 60] at d = 0.05:
+    t_audit = [10.0, 20.0, 30.0, 35.0, 40.0, 45.0, 50.0, 55.0, 60.0]
+    d_aud = 0.05
+    t_aud_t = torch.tensor(t_audit, device=device, dtype=torch.float64)
+    arg_da = torch.tensor([[2.0 * d_aud]], device=device, dtype=torch.float64) * u_vec.unsqueeze(0)
+    Ach_a = torch.cosh(arg_da) * w_base.unsqueeze(0)
+    sinch_da = torch.where(
+        arg_da < 1.0e-4,
+        1.0 + (arg_da ** 2) / 6.0 + (arg_da ** 4) / 120.0,
+        torch.sinh(arg_da) / torch.clamp(arg_da, min=1.0e-30),
+    )
+    Ash_a = sinch_da * (w_base * u2_f).unsqueeze(0)
+    Bc_a = torch.cos(2.0 * u_vec.unsqueeze(1) * t_aud_t.unsqueeze(0))
+    Bs_a = torch.sin(2.0 * u_vec.unsqueeze(1) * t_aud_t.unsqueeze(0))
+    Ra = torch.matmul(Ach_a, Bc_a).squeeze(0).cpu().numpy()
+    Rta = (-torch.matmul(Ach_a * u2_f.unsqueeze(0), Bs_a)).squeeze(0).cpu().numpy()
+    Ita = torch.matmul(Ash_a, Bs_a).squeeze(0).cpu().numpy()
+    Itta = torch.matmul(Ash_a * u2_f.unsqueeze(0), Bc_a).squeeze(0).cpu().numpy()
+    What_f64 = (Ra * Itta - Ita * Rta) * np.exp(0.5 * math.pi * np.array(t_audit))
+    assert not np.any(np.isnan(What_f64)), "NaN detected in float64 audit!"
 
-    d_bands = [
-        (0, 40, "[0.000, 0.050]", 40 * 12499),
-        (40, 120, "[0.050, 0.150]", 80 * 12499),
-        (120, 240, "[0.150, 0.300]", 120 * 12499),
-        (240, 399, "[0.300, 0.500]", 159 * 12499),
-    ]
-    print("\n  Sub-strip continuum certification summary (Table 3):")
-    for i0, i1, b_lbl, n_c in d_bands:
-        m_mid = W_hat_mid[i0:i1, :].min().item()
-        m_mar = lipschitz_margin[i0:i1, :].max().item()
-        m_low = W_hat_lower[i0:i1, :].min().item()
-        m_osc = W_hat_lower[i0:i1, j_t10:].min().item()
-        r_max = torch.max(lipschitz_margin[i0:i1, :] / W_hat_mid[i0:i1, :]).item() * 100.0
-        print(f"  Strip d in {b_lbl} | Cells: {n_c:>9,d} | min low [0,55]: {m_low:+.6e} | min low [10,55]: {m_osc:+.6e} | max ratio: {r_max:.2f}%")
+    # L1 absolute inner-product norms |x|^T |y| for Higham's true bound:
+    L1_R = float(torch.sum(torch.abs(Ach_a)).item())
+    L1_Rt = float(torch.sum(torch.abs(Ach_a * u2_f.unsqueeze(0))).item())
+    L1_It = float(torch.sum(torch.abs(Ash_a)).item())
+    L1_Itt = float(torch.sum(torch.abs(Ash_a * u2_f.unsqueeze(0))).item())
+    u_mach = 2.0 ** -53
+    gamma_Nu = (Nu * u_mach) / (1.0 - Nu * u_mach)
 
-    # Move arrays to CPU for plotting
+    audit_rows = []
+    print(f"\n  {'t':>6} | {'W_hat_exact (50 dps)':>20} | {'W_hat_float64':>20} | {'|Abs Error|':>14} | {'Rel Error':>12} | {'Higham Bound':>14}")
+    print("  " + "-" * 98)
+    for idx_a, tv in enumerate(t_audit):
+        res_iv = iv_eval_jacobi_full(iv.mpf("0.05"), iv.mpf(str(tv)))
+        w_ex = float(res_iv["W_tilde"].mid) * math.exp(0.5 * math.pi * tv)
+        R_ex = abs(float(res_iv["R"].mid))
+        Rt_ex = abs(float(res_iv["Rt"].mid))
+        It_ex = abs(float(res_iv["I"].mid)) / d_aud
+        # Compute exact Itilt from W_tilde or mpmath:
+        z_mp = mp.mpf(str(tv)) - mp.j * mp.mpf("0.05")
+        xi_v = xi_exact_mp(z_mp)
+        xip_v = mp.diff(xi_exact_mp, z_mp)
+        wtil_mp = float(((xi_v.real * xip_v.imag - xi_v.imag * xip_v.real) / mp.mpf("0.05")) * mp.exp(mp.mpf("0.5") * mp.pi * mp.mpf(str(tv))))
+        abs_err = abs(What_f64[idx_a] - wtil_mp)
+        rel_err = abs_err / abs(wtil_mp)
+        Itt_ex = abs(float(xip_v.imag)) / d_aud
+        # True Higham inner-product bound amplified by exp(pi*t/2):
+        err_Wtil_higham = gamma_Nu * (L1_R * Itt_ex + R_ex * L1_Itt + L1_It * Rt_ex + It_ex * L1_Rt)
+        higham_hat = err_Wtil_higham * math.exp(0.5 * math.pi * tv)
+        iv_width_hat = float(res_iv["W_tilde"].b - res_iv["W_tilde"].a) * math.exp(0.5 * math.pi * tv)
+        audit_rows.append((tv, wtil_mp, What_f64[idx_a], abs_err, rel_err, higham_hat, iv_width_hat))
+        print(f"  {tv:>6.1f} | {wtil_mp:>+20.8e} | {What_f64[idx_a]:>+20.8e} | {abs_err:>14.4e} | {rel_err:>11.3e} | {higham_hat:>14.4e}")
+
+    # Dense curve of float64 error vs mpmath on t in [10, 60] for Figure 2(c)
+    t_dense_aud = np.linspace(10.0, 60.0, 101)
+    t_da_t = torch.tensor(t_dense_aud, device=device, dtype=torch.float64)
+    Ra_d = torch.matmul(Ach_a, torch.cos(2.0 * u_vec.unsqueeze(1) * t_da_t.unsqueeze(0))).squeeze(0).cpu().numpy()
+    Rta_d = (-torch.matmul(Ach_a * u2_f.unsqueeze(0), torch.sin(2.0 * u_vec.unsqueeze(1) * t_da_t.unsqueeze(0)))).squeeze(0).cpu().numpy()
+    Ita_d = torch.matmul(Ash_a, torch.sin(2.0 * u_vec.unsqueeze(1) * t_da_t.unsqueeze(0))).squeeze(0).cpu().numpy()
+    Itta_d = torch.matmul(Ash_a * u2_f.unsqueeze(0), torch.cos(2.0 * u_vec.unsqueeze(1) * t_da_t.unsqueeze(0))).squeeze(0).cpu().numpy()
+    What_f64_dense = (Ra_d * Itta_d - Ita_d * Rta_d) * np.exp(0.5 * math.pi * t_dense_aud)
+    rel_err_dense = []
+    higham_rel_dense = []
+    iv_rel_dense = []
+    for idx_d, tv in enumerate(t_dense_aud):
+        res_iv = iv_eval_jacobi_full(iv.mpf("0.05"), iv.mpf(f"{tv:.4f}"))
+        env_v = math.exp(0.5 * math.pi * tv)
+        w_ex = float(res_iv["W_tilde"].mid) * env_v
+        R_ex = abs(float(res_iv["R"].mid))
+        Rt_ex = abs(float(res_iv["Rt"].mid))
+        It_ex = abs(float(res_iv["I"].mid)) / d_aud
+        Itt_ex = abs(float(res_iv["It"].mid)) / d_aud
+        abs_e = abs(What_f64_dense[idx_d] - w_ex)
+        rel_err_dense.append(max(abs_e / abs(w_ex), 1e-17))
+        h_hat = gamma_Nu * (L1_R * Itt_ex + R_ex * L1_Itt + L1_It * Rt_ex + It_ex * L1_Rt) * env_v
+        higham_rel_dense.append(h_hat / abs(w_ex))
+        iv_w = float(res_iv["W_tilde"].b - res_iv["W_tilde"].a) * env_v
+        iv_rel_dense.append(iv_w / abs(w_ex))
+
     d_cpu = d_vec.cpu().numpy()
     t_cpu = t_vec.cpu().numpy()
-    W_hat_cpu = W_hat_gpu.cpu().numpy()
-    W_low_cpu = W_hat_lower.cpu().numpy()
-    margin_cpu = lipschitz_margin.cpu().numpy()
+    W_hat_cpu = np.maximum(W_hat_gpu.cpu().numpy(), 1e-3)
     R0_hat = (R_gpu[0, :] * torch.exp(0.25 * math.pi * t_vec)).cpu().numpy()
     Rt0_hat = (Rt_gpu[0, :] * torch.exp(0.25 * math.pi * t_vec)).cpu().numpy()
     Rtt0_hat = (Rtt_gpu[0, :] * torch.exp(0.25 * math.pi * t_vec)).cpu().numpy()
-
-    c2_hat_cpu = 2.0 * (W_hat_cpu[40, :] - W_hat_cpu[0, :]) / (d_cpu[40] ** 2)
-    frac_convex = np.mean(c2_hat_cpu >= 0.0) * 100.0
-    L0_cpu = W_hat_cpu[0, :]
-    d_collar_cpu = np.where(c2_hat_cpu >= 0.0, 0.65, np.sqrt(2.0 * L0_cpu / np.maximum(-c2_hat_cpu, 1e-30)))
-    min_d_collar = float(np.min(np.minimum(d_collar_cpu, 0.65)))
-    print(f"\n  [*] Super-linear transverse convexity fraction (c_3(t) >= 0): {frac_convex:.2f}%")
-    print(f"  [*] Minimum cubic collar radius d_collar(t) on remaining {100.0-frac_convex:.2f}%: {min_d_collar:.4f}")
 
     # --------------------------------------------------------------------------
     # STEP 5: GENERATE PUBLICATION FIGURES (300 DPI PDF & PNG)
     # --------------------------------------------------------------------------
     fig_dir = Path(__file__).resolve().parent.parent / "paper" / "figures"
     fig_dir.mkdir(parents=True, exist_ok=True)
-
+    zeros_8_vals = [row[1] for row in dipole_cert_data if row[1] <= 45.0]
     zeros_10_vals = [row[1] for row in dipole_cert_data]
 
-    # --- FIGURE 1: Parity-Reduced Wronskian Landscape & Dipole Hierarchy ---
+    # --- FIGURE 1: Parity-Reduced Wronskian Landscape & Jensen-Laguerre Moments ---
     fig1, axes1 = plt.subplots(2, 2, figsize=(13.5, 10.2), dpi=300)
 
-    # Panel (a): 2D Lipschitz lower bound landscape
     ax1a = axes1[0, 0]
-    step_d, step_t = 2, 10
-    D_sub, T_sub = np.meshgrid(d_cpu[:-1:step_d], t_cpu[:-1:step_t], indexing="ij")
-    W_sub = W_low_cpu[::step_d, ::step_t]
+    D_sub, T_sub = np.meshgrid(d_cpu[::2], t_cpu[::5], indexing="ij")
+    W_sub = W_hat_cpu[::2, ::5]
     im1a = ax1a.pcolormesh(
         T_sub, D_sub, W_sub,
-        norm=LogNorm(vmin=max(min_low, 1e-1), vmax=np.max(W_sub)),
+        norm=LogNorm(vmin=max(np.min(W_sub), 1e-2), vmax=np.max(W_sub)),
         cmap="viridis", shading="auto", rasterized=True
     )
     cb1a = fig1.colorbar(im1a, ax=ax1a, pad=0.02)
-    cb1a.set_label(r"Certified lower bound $\widehat{W}_{\mathrm{lower}}(C_{i,j})$", fontsize=9)
-    ax1a.plot(zeros_10_vals, np.zeros_like(zeros_10_vals), "^", color="#e74c3c", mec="white", ms=6.5, zorder=6,
-              label=r"Critical-line zeros $\gamma_1, \dots, \gamma_{10}$ ($d=0$)")
-    ax1a.set_xlim(0.0, 55.0)
+    cb1a.set_label(r"Envelope-scaled $\widehat{W}(d,t) = \mathrm{e}^{\pi t/2}\widetilde{W}(d,t)$", fontsize=9)
+    ax1a.plot(zeros_8_vals, np.zeros_like(zeros_8_vals), "^", color="#e74c3c", mec="white", ms=6.5, zorder=6,
+              label=r"Critical-line zeros $\gamma_1, \dots, \gamma_8$ ($d=0$)")
+    ax1a.set_xlim(0.0, 45.0)
     ax1a.set_ylim(0.0, 0.50)
-    ax1a.set_title(r"(a) Certified 2D Continuum Lower Bound $\widehat{W}_{\mathrm{lower}}(C_{i,j}) > 0$", fontsize=10.5, fontweight="bold")
+    ax1a.set_title(r"(a) Numerical Landscape of $\widehat{W}(d,t)$ on $[0, 0.50] \times [0, 45]$", fontsize=10.5, fontweight="bold")
     ax1a.set_xlabel(r"Spectral height $t$", fontsize=9.5)
     ax1a.set_ylabel(r"Transverse offset $d = \sigma - 1/2$", fontsize=9.5)
     ax1a.legend(loc="upper right", fontsize=8.0, framealpha=0.92)
     ax1a.grid(True, alpha=0.20, color="white")
 
-    # Panel (b): Parity-reduced W_tilde(d,t) / c_1(t) showing flat Neumann tangent and upward convexity
     ax1b = axes1[0, 1]
     d_plot = np.linspace(0.0, 0.50, 200)
     for k_idx, z_lbl, col in [
@@ -1222,14 +1324,13 @@ def main():
     ax1b.axhline(1.0, color="black", ls="--", lw=1.4, label=r"Flat Neumann tangent $\partial_d\widetilde{W}(0,t) = 0$")
     ax1b.set_xlim(0.0, 0.50)
     ax1b.set_ylim(0.98, 1.34)
-    ax1b.set_title(r"(b) Flat Neumann Tangent and Upward Dipole Convexity of $\widetilde{W}(d,t)/c_1(t)$",
+    ax1b.set_title(r"(b) Flat Neumann Tangent and Upward Convexity of $\widetilde{W}(d,t)/c_1(t)$",
                    fontsize=10.5, fontweight="bold")
     ax1b.set_xlabel(r"Transverse offset $d = \sigma - 1/2$", fontsize=9.5)
     ax1b.set_ylabel(r"Normalized parity-reduced $\widetilde{W}(d,t)/c_1(t)$", fontsize=9.5)
     ax1b.legend(loc="upper left", fontsize=7.8, framealpha=0.92)
     ax1b.grid(True, alpha=0.25)
 
-    # Panel (c): Certified interval dipole moments c_1, c_3, c_5 at gamma_1..gamma_10
     ax1c = axes1[1, 0]
     k_vals = np.array([row[0] for row in dipole_cert_data])
     c1_hats = np.array([float(row[5].a) for row in dipole_cert_data])
@@ -1237,22 +1338,21 @@ def main():
     c5_hats = np.array([float(row[7].a) for row in dipole_cert_data])
     w_bar = 0.26
     ax1c.bar(k_vals - w_bar, c1_hats, width=w_bar, color="#1f77b4", edgecolor="black", lw=0.6,
-             label=r"$\widehat{c}_1(\gamma_k).a = \mathrm{e}^{\pi\gamma_k/2}(\Xi'(\gamma_k))^2 > 0$")
+             label=r"$\widehat{c}_1(\gamma_k).a = \mathrm{e}^{\pi\gamma_k/2}L_1(\Xi;\gamma_k) > 0$")
     ax1c.bar(k_vals, c3_hats, width=w_bar, color="#2ca02c", edgecolor="black", lw=0.6,
-             label=r"$\widehat{c}_3(\gamma_k).a = \frac{1}{6}\mathrm{e}^{\pi\gamma_k/2}\partial_d^3 W(0,\gamma_k) > 0$")
+             label=r"$\widehat{c}_3(\gamma_k).a = 2\mathrm{e}^{\pi\gamma_k/2}L_2(\Xi;\gamma_k) > 0$")
     ax1c.bar(k_vals + w_bar, c5_hats, width=w_bar, color="#e67e22", edgecolor="black", lw=0.6,
-             label=r"$\widehat{c}_5(\gamma_k).a = \frac{1}{120}\mathrm{e}^{\pi\gamma_k/2}\partial_d^5 W(0,\gamma_k) > 0$")
+             label=r"$\widehat{c}_5(\gamma_k).a = 3\mathrm{e}^{\pi\gamma_k/2}L_3(\Xi;\gamma_k) > 0$")
     ax1c.set_yscale("log")
     ax1c.set_xticks(k_vals)
     ax1c.set_xticklabels([rf"$\gamma_{{{k}}}$" for k in k_vals], fontsize=9.0)
-    ax1c.set_title(r"(c) Interval-Certified Dipole Invariants $\widehat{c}_1, \widehat{c}_3, \widehat{c}_5 > 0$ at $\gamma_1, \dots, \gamma_{10}$",
+    ax1c.set_title(r"(c) Interval-Enclosed Moments $\widehat{c}_1, \widehat{c}_3, \widehat{c}_5 > 0$ at $\gamma_1, \dots, \gamma_{10}$",
                    fontsize=10.5, fontweight="bold")
     ax1c.set_xlabel(r"Non-trivial Riemann zeros $\gamma_1, \dots, \gamma_{10}$", fontsize=9.5)
-    ax1c.set_ylabel(r"Envelope-scaled lower bound (log scale)", fontsize=9.5)
+    ax1c.set_ylabel(r"Envelope-scaled lower endpoint (log scale)", fontsize=9.5)
     ax1c.legend(loc="lower right", fontsize=7.8, framealpha=0.92)
     ax1c.grid(True, which="both", alpha=0.25)
 
-    # Panel (d): Critical-line Lagarias-Turan boundary value c_1(t) = (Xi')^2 - Xi*Xi'' (Stirling-normalized)
     ax1d = axes1[1, 1]
     mask_t = (t_cpu >= 12.0) & (t_cpu <= 36.0)
     t_sub_d = t_cpu[mask_t]
@@ -1261,19 +1361,22 @@ def main():
     pot_term = -(R0_hat[mask_t] * Rtt0_hat[mask_t]) / stir_scale
     tot_c1 = kin_term + pot_term
     ax1d.plot(t_sub_d, tot_c1, color="#1a252f", lw=2.0,
-              label=r"Total boundary invariant $\widetilde{W}(0,t) = (\Xi'(t))^2 - \Xi(t)\Xi''(t) > 0$")
+              label=r"Laguerre expression $L_1(\Xi;t) = (\Xi'(t))^2 - \Xi(t)\Xi''(t)$")
     ax1d.plot(t_sub_d, kin_term, color="#2980b9", lw=1.4, ls="--",
-              label=r"Kinetic term $(\Xi'(t))^2 \geq 0$ (equals $\widetilde{W}(0,\gamma_k)$ at zeros)")
+              label=r"Square derivative term $(\Xi'(t))^2 \geq 0$ (vanishes at $\tau_1, \tau_2$)")
     ax1d.fill_between(t_sub_d, 0, tot_c1, color="#3498db", alpha=0.16)
     for z_t in zeros_10_vals[:5]:
         ax1d.axvline(z_t, color="#e74c3c", lw=1.0, ls=":", alpha=0.85)
+    for tau_v in (float(wig_check["tau1"]), float(wig_check["tau2"])):
+        ax1d.axvline(tau_v, color="#8e44ad", lw=1.0, ls="-.", alpha=0.80)
     ax1d.plot([], [], color="#e74c3c", lw=1.1, ls=":", label=r"Zeros $\gamma_1, \dots, \gamma_5$ ($\Xi(\gamma_k)=0$)")
+    ax1d.plot([], [], color="#8e44ad", lw=1.1, ls="-.", label=r"Extrema $\tau_1 \approx 15.59,\ \tau_2 \approx 22.10$ ($\Xi'(\tau_k)=0$)")
     ax1d.set_xlim(12.0, 36.0)
-    ax1d.set_ylim(0.0, max(np.max(tot_c1), np.max(kin_term)) * 1.18)
-    ax1d.set_title(r"(d) Critical-Line Boundary Invariant $\widetilde{W}(0,t) = c_1(t) > 0$ ($d = 0$)", fontsize=10.5, fontweight="bold")
+    ax1d.set_ylim(0.0, max(np.max(tot_c1), np.max(kin_term)) * 1.22)
+    ax1d.set_title(r"(d) Classical Laguerre Expression $\widetilde{W}(0,t) = L_1(\Xi;t)$ ($d = 0$)", fontsize=10.5, fontweight="bold")
     ax1d.set_xlabel(r"Spectral height $t$", fontsize=9.5)
-    ax1d.set_ylabel(r"Stirling-normalized $\mathrm{e}^{\pi t/2}(t/2\pi)^{-7/2}\widetilde{W}(0,t)$", fontsize=9.5)
-    ax1d.legend(loc="upper right", fontsize=7.8, framealpha=0.92)
+    ax1d.set_ylabel(r"Stirling-normalized $\mathrm{e}^{\pi t/2}(t/2\pi)^{-7/2}L_1(\Xi;t)$", fontsize=9.5)
+    ax1d.legend(loc="upper right", fontsize=7.4, framealpha=0.92)
     ax1d.grid(True, alpha=0.25)
 
     plt.tight_layout()
@@ -1282,43 +1385,36 @@ def main():
     fig1.savefig(f1_pdf, dpi=300)
     fig1.savefig(f1_png, dpi=300)
     plt.close(fig1)
-    print(f"  [*] Saved Figure 1: {f1_pdf.name} ({f1_pdf.stat().st_size/1024:.1f} KB)")
+    print(f"\n  [*] Saved Figure 1: {f1_pdf.name} ({f1_pdf.stat().st_size/1024:.1f} KB)")
 
-    # --- FIGURE 2: 2D Interval-MVT Boxes & Integer Argument Principle ---
+    # --- FIGURE 2: 2D Interval-MVT Boxes, IEEE-754 Cancellation Audit & Argument Principle ---
     fig2, axes2 = plt.subplots(2, 2, figsize=(13.5, 10.2), dpi=300)
 
-    # Panel (a): Overlay of 2D MVT collar boxes and macro Argument Principle boxes
     ax2a = axes2[0, 0]
-    im2a = ax2a.pcolormesh(
-        T_sub, D_sub, W_sub,
-        norm=LogNorm(vmin=max(min_low, 1e-1), vmax=np.max(W_sub)),
-        cmap="viridis", shading="auto", rasterized=True
-    )
-    cb2a = fig2.colorbar(im2a, ax=ax2a, pad=0.02)
-    cb2a.set_label(r"Certified lower bound $\widehat{W}_{\mathrm{lower}}(C_{i,j})$", fontsize=9)
     for _, b_tuple in all_certified_boxes:
         da_b, db_b, ta_b, tb_b, _, _, _ = b_tuple
         rect = Rectangle((ta_b, da_b), tb_b - ta_b, db_b - da_b,
-                         linewidth=1.0, edgecolor="#ff4757", facecolor="none", zorder=7)
+                         linewidth=1.1, edgecolor="#c0392b", facecolor="#fadbd8", alpha=0.55, zorder=5)
         ax2a.add_patch(rect)
-    ax2a.plot([], [], color="#ff4757", lw=1.4, label=r"80 2D Interval-MVT collar boxes ($\widetilde{W}(\mathbf{B}).a > 0$)")
+    ax2a.plot([], [], color="#c0392b", lw=1.4, label=rf"{len(all_certified_boxes)} 2D Interval-MVT collar boxes ($\widetilde{{W}}(\mathbf{{B}}).a > 0$)")
     for idx_c, (_, tm_c, tM_c, _, _, _, _) in enumerate(cauchy_results):
-        rect_c = Rectangle((tm_c, 0.002), tM_c - tm_c, 0.495,
-                           linewidth=1.5, linestyle="--", edgecolor="#f1c40f", facecolor="none", zorder=6)
+        rect_c = Rectangle((tm_c, 0.002), tM_c - tm_c, 1.18,
+                           linewidth=1.5, linestyle="--", edgecolor="#2980b9", facecolor="#ebf5fb", alpha=0.45, zorder=3)
         ax2a.add_patch(rect_c)
-        ax2a.text(0.5 * (tm_c + tM_c), 0.43, rf"$\Omega_{{{idx_c+1}}}$" + "\n" + r"$N=0$",
-                  color="white", fontweight="bold", fontsize=8.0, ha="center", va="center",
-                  bbox=dict(boxstyle="round,pad=0.2", facecolor="#1a252f", edgecolor="#f1c40f", alpha=0.82), zorder=8)
-    ax2a.plot([], [], color="#f1c40f", lw=1.5, ls="--", label=r"Macro-rectangles $\Omega_1, \dots, \Omega_5$ ($N_{\mathrm{zeros}}(\Omega_k)=0$)")
+        ax2a.text(0.5 * (tm_c + tM_c), 0.85, rf"$\Omega_{{{idx_c+1}}}$" + "\n" + r"$N=0$",
+                  color="#1a252f", fontweight="bold", fontsize=8.2, ha="center", va="center",
+                  bbox=dict(boxstyle="round,pad=0.22", facecolor="white", edgecolor="#2980b9", alpha=0.92), zorder=8)
+    ax2a.plot([], [], color="#2980b9", lw=1.5, ls="--", label=r"Argument-Principle rectangles $\Omega_1, \dots, \Omega_5$ ($N_{\mathrm{zeros}}=0$)")
+    ax2a.plot(zeros_10_vals, np.zeros_like(zeros_10_vals), "^", color="#e74c3c", mec="black", ms=6.0, zorder=9,
+              label=r"Critical-line zeros $\gamma_1, \dots, \gamma_{10}$")
     ax2a.set_xlim(0.0, 55.0)
-    ax2a.set_ylim(0.0, 0.50)
-    ax2a.set_title(r"(a) 2D Interval-MVT Collar Boxes and Macro-Rectangles $\Omega_1, \dots, \Omega_5$", fontsize=10.5, fontweight="bold")
+    ax2a.set_ylim(-0.03, 1.23)
+    ax2a.set_title(r"(a) Benchmark Partition: Collar Boxes ($\gamma_k,\tau_k$) and Rectangles $\Omega_1, \dots, \Omega_5$", fontsize=10.2, fontweight="bold")
     ax2a.set_xlabel(r"Spectral height $t$", fontsize=9.5)
     ax2a.set_ylabel(r"Transverse offset $d = \sigma - 1/2$", fontsize=9.5)
-    ax2a.legend(loc="lower right", fontsize=7.8, framealpha=0.92)
-    ax2a.grid(True, alpha=0.20, color="white")
+    ax2a.legend(loc="upper left", fontsize=7.6, framealpha=0.94)
+    ax2a.grid(True, alpha=0.25)
 
-    # Panel (b): 80 2D Interval-MVT enclosures [W_hat(B).a, W_hat(B).b]
     ax2b = axes2[0, 1]
     box_indices = np.arange(1, len(all_certified_boxes) + 1)
     box_mids_hat, box_lows_hat, box_highs_hat = [], [], []
@@ -1334,46 +1430,37 @@ def main():
     box_highs_hat = np.array(box_highs_hat)
 
     ax2b.fill_between(box_indices, box_lows_hat, box_highs_hat, color="#2ecc71", alpha=0.35,
-                      label=r"Rigorous interval enclosure $[\widehat{W}(\mathbf{B}).a, \widehat{W}(\mathbf{B}).b]$")
-    ax2b.plot(box_indices, box_mids_hat, "o-", color="#1a252f", ms=2.8, lw=1.1,
+                      label=r"Interval enclosure $[\widehat{W}(\mathbf{B}).a, \widehat{W}(\mathbf{B}).b]$")
+    ax2b.plot(box_indices, box_mids_hat, "o-", color="#1a252f", ms=2.6, lw=1.1,
               label=r"Box center evaluation $\widehat{W}(d_0, t_0)$")
     ax2b.plot(box_indices, box_lows_hat, "-", color="#27ae60", lw=1.6,
-              label=r"Certified lower bound $\widehat{W}(\mathbf{B}).a > 0$")
-    ax2b.axhline(0.0, color="#c0392b", lw=1.4, ls="--", label=r"Zero threshold $\widehat{W} = 0$")
-    zone_bounds = [0, 16, 32, 48, 64, 80]
-    zone_labels = [r"$\gamma_1$", r"$\tau_1$", r"$\gamma_2$", r"$\tau_2$", r"$\gamma_3$"]
-    for idx_z, z_short in enumerate(zone_labels):
-        if idx_z > 0:
-            ax2b.axvline(zone_bounds[idx_z] + 0.5, color="#7f8c8d", lw=0.9, ls=":")
-        mid_x = 0.5 * (zone_bounds[idx_z] + zone_bounds[idx_z + 1]) + 0.5
-        y_lbl = max(box_highs_hat) * (0.72 if idx_z == 4 else 0.90)
-        ax2b.text(mid_x, y_lbl, f"Zone {z_short}", ha="center", fontsize=8.0,
-                  bbox=dict(boxstyle="round,pad=0.2", facecolor="#f8f9f9", edgecolor="#bdc3c7"))
+              label=r"Lower endpoint $\widehat{W}(\mathbf{B}).a > 0$")
+    ax2b.axhline(0.0, color="#c0392b", lw=1.3, ls="--", label=r"Zero threshold $\widehat{W} = 0$")
     ax2b.set_xlim(1, len(all_certified_boxes))
-    ax2b.set_ylim(-5000.0, max(box_highs_hat) * 1.08)
-    ax2b.set_title(r"(b) 2D Interval Mean-Value Enclosures Across 80 Critical Collar Boxes", fontsize=10.5, fontweight="bold")
-    ax2b.set_xlabel(r"Collar box index $m \in \{1, \dots, 80\}$", fontsize=9.5)
+    ax2b.set_ylim(-5000.0, max(box_highs_hat) * 1.10)
+    ax2b.set_title(rf"(b) Non-Harmonic-Safe 2D Interval-MVT Enclosures ({len(all_certified_boxes)} Collar Boxes)", fontsize=10.2, fontweight="bold")
+    ax2b.set_xlabel(rf"Collar box index $m \in \{{1, \dots, {len(all_certified_boxes)}\}}$ across $\gamma_1, \tau_1, \gamma_2, \tau_2, \gamma_3$", fontsize=9.2)
     ax2b.set_ylabel(r"Envelope-scaled $\widehat{W}(\mathbf{B}_m)$", fontsize=9.5)
-    ax2b.legend(loc="lower right", fontsize=7.8, framealpha=0.92)
+    ax2b.legend(loc="upper left", fontsize=7.6, framealpha=0.92)
     ax2b.grid(True, alpha=0.25)
 
-    # Panel (c): Cross-section of Lipschitz continuum lower bound vs margin
+    # Panel (c): IEEE-754 float64 Cancellation Audit vs mpmath.iv
     ax2c = axes2[1, 0]
-    t_mid_cpu = 0.5 * (t_cpu[:-1] + t_cpu[1:])
-    min_mid_vs_t = np.min(W_hat_cpu[:-1, :-1], axis=0)
-    min_low_vs_t = np.min(W_low_cpu, axis=0)
-    max_mar_vs_t = np.max(margin_cpu, axis=0)
-    ax2c.semilogy(t_mid_cpu, min_mid_vs_t, color="#2980b9", lw=1.8, label=r"Grid minimum $\min_d \widehat{W}_{\mathrm{mid}}(d,t)$")
-    ax2c.semilogy(t_mid_cpu, min_low_vs_t, color="#27ae60", lw=1.6, ls="--", label=r"Certified continuum bound $\min_d \widehat{W}_{\mathrm{lower}}(d,t) > 0$")
-    ax2c.semilogy(t_mid_cpu, max_mar_vs_t, color="#e67e22", lw=1.2, alpha=0.85, label=r"Max cell Lipschitz + ULP margin")
-    ax2c.set_xlim(10.0, 55.0)
-    ax2c.set_title(r"(c) Continuum Lipschitz Lower Bound vs. Cell Margin Across $t \in [10, 55]$", fontsize=10.5, fontweight="bold")
+    ax2c.semilogy(t_dense_aud, rel_err_dense, color="#c0392b", lw=1.8,
+                  label="Measured IEEE-754 float64 rel. error ($d=0.05$)")
+    ax2c.semilogy(t_dense_aud, higham_rel_dense, color="#e67e22", lw=1.6, ls="--",
+                  label=r"Higham $|x|^\top|y|$ bound $\propto u_{\mathrm{mach}}\mathrm{e}^{+\pi t/4}$")
+    ax2c.semilogy(t_dense_aud, iv_rel_dense, color="#27ae60", lw=1.8, ls="-.",
+                  label="Rigorous mpmath.iv rel. width (iv.dps=35)")
+    ax2c.axhline(1.0, color="black", lw=1.2, ls=":", label=r"100% relative error ($O(1)$ loss of sign)")
+    ax2c.set_xlim(10.0, 60.0)
+    ax2c.set_ylim(1e-36, 1e3)
+    ax2c.set_title("  (c) IEEE-754 float64 Cancellation Breakdown vs. mpmath.iv", fontsize=10.2, fontweight="bold")
     ax2c.set_xlabel(r"Spectral height $t$", fontsize=9.5)
-    ax2c.set_ylabel(r"Envelope-scaled magnitude $\widehat{W}$ (log scale)", fontsize=9.5)
-    ax2c.legend(loc="lower right", fontsize=7.8, framealpha=0.92)
+    ax2c.set_ylabel(r"Relative error / relative interval width (log scale)", fontsize=9.5)
+    ax2c.legend(loc="lower right", fontsize=7.4, framealpha=0.92)
     ax2c.grid(True, which="both", alpha=0.25)
 
-    # Panel (d): Integer Argument Principle winding enclosures on Omega_1..Omega_5
     ax2d = axes2[1, 1]
     omega_idx = np.arange(1, len(cauchy_results) + 1)
     iv_radii = np.array([max(abs(float(r[3].a)), abs(float(r[3].b))) for r in cauchy_results])
@@ -1382,7 +1469,7 @@ def main():
     ax2d.axhline(0.5, color="#c0392b", lw=1.8, ls="--",
                  label=r"Integer decision threshold $\pm 0.5$ ($N_{\mathrm{zeros}} \in \mathbb{Z}$)")
     ax2d.fill_between([0.6, 5.4], 1e-35, 0.5, color="#eafaf1", alpha=0.50,
-                      label=r"Certified zero-free region $|N_{\mathrm{zeros}}| < 0.5 \Rightarrow N_{\mathrm{zeros}} = 0$")
+                      label=r"Zero-free enclosure $|N_{\mathrm{zeros}}| < 0.5 \Rightarrow N_{\mathrm{zeros}} = 0$")
     for idx_o, r_val in zip(omega_idx, iv_radii):
         ax2d.annotate(rf"$\pm {r_val:.2e}$" + "\n" + r"($N=0$)", (idx_o, r_val),
                       textcoords="offset points", xytext=(0, 10), ha="center", fontsize=7.8,
@@ -1398,10 +1485,10 @@ def main():
     ax2d.set_xlim(0.6, 5.4)
     ax2d.set_ylim(1e-35, 5.0)
     ax2d.set_title(r"(d) Integer Argument Principle Enclosures $N_{\mathrm{zeros}}(\Omega_k) \in (-0.5, 0.5) \cap \mathbb{Z} = \{0\}$",
-                   fontsize=10.5, fontweight="bold")
+                   fontsize=10.2, fontweight="bold")
     ax2d.set_xlabel(r"Macro-rectangles $\Omega_k = [10^{-6}, 1.20] \times [t_{k-1}, t_k]$", fontsize=9.5)
     ax2d.set_ylabel(r"Winding-number interval radius (log scale)", fontsize=9.5)
-    ax2d.legend(loc="lower right", fontsize=7.8, framealpha=0.92)
+    ax2d.legend(loc="lower right", fontsize=7.6, framealpha=0.92)
     ax2d.grid(True, which="both", alpha=0.25)
 
     plt.tight_layout()
@@ -1413,9 +1500,9 @@ def main():
     print(f"  [*] Saved Figure 2: {f2_pdf.name} ({f2_pdf.stat().st_size/1024:.1f} KB)")
 
     elapsed = time.time() - t0_global
-    print("\n" + "=" * 90)
+    print("\n" + "=" * 92)
     print(f" [SUCCESS] PAPER II VERIFICATION SUITE COMPLETED IN {elapsed:.2f} SECONDS (EXIT CODE 0)")
-    print("=" * 90)
+    print("=" * 92)
 
 
 if __name__ == "__main__":

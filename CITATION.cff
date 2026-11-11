@@ -1,14 +1,14 @@
 cff-version: 1.2.0
-message: "If you use this mathematical work, interval-arithmetic suite, or continuum certification architecture, please cite it as below."
+message: "If you use these mathematical notes or interval-arithmetic benchmark scripts, please cite them as below."
 type: software
-title: "Parity-Reduced Transverse Wronskians, Higher Dipole Invariants, and Rigorous Continuum Certification for Riemann's Xi-Function"
+title: "Parity-Reduced Transverse Wronskians, Jensen-Laguerre Moment Identities, and Division-Free Interval Enclosures for Riemann's Xi-Function"
 authors:
   - family-names: "Missiaen"
     given-names: "Thijs"
     email: "thijs.missiaen@gmail.com"
     affiliation: "Independent Researcher, Belgium"
     orcid: "https://orcid.org/0009-0007-3678-0810"
-version: "1.0.0"
+version: "1.1.0"
 date-released: "2026-10-25"
 license: "MIT"
 url: "https://github.com/thijsmissiaen/paper2-parity-reduced-wronskian"
@@ -17,22 +17,19 @@ keywords:
   - "Riemann Xi-function"
   - "parity-reduced transverse Wronskian"
   - "hyperbolic sinc kernel"
-  - "transverse dipole hierarchy"
-  - "Turan inequalities"
+  - "Jensen-Laguerre invariants"
   - "Lehmer phenomenon"
   - "directed-rounding interval arithmetic"
   - "integer argument principle"
-  - "continuum Lipschitz certification"
+  - "catastrophic cancellation"
 abstract: >-
-  We prove that the transverse Wronskian W(d,t) = (1/2) d/dd |Xi(t-id)|^2 of Riemann's
-  completed Xi-function satisfies odd transverse parity W(-d,t) = -W(d,t) with identically
-  vanishing even derivatives d^{2k}W/dd^{2k}(0,t) = 0, so that the parity-reduced Wronskian
-  W_tilde(d,t) := W(d,t)/d removes the d -> 0+ boundary-layer degeneracy in the
-  Speiser-Hinkkanen-Lagarias positivity criterion. Combining a division-free Wigner-hyperbolic
-  integral representation governed by sinc_hyp(dy) = sinh(dy)/(dy) >= 1, closed-form
-  Cauchy-Riemann identities for the higher transverse dipole invariants c_{2m-1}(t) and
-  non-singular partial derivatives, and dual directed-rounding interval evaluators (mpmath.iv)
-  based on Euler-Maclaurin summation and Jacobi-theta quadrature, we establish strict
-  positivity c_1(gamma_k), c_3(gamma_k), c_5(gamma_k) > 0 across the first ten non-trivial
-  zeros and certify the absence of off-critical zeros across 4,987,101 continuum cells
-  covering [0, 0.50] x [0, 55].
+  Let W(d,t) = (1/2) d/dd |Xi(t-id)|^2 be the transverse Wronskian of Riemann's completed
+  function Xi(t-id). Factoring d analytically via sinc_hyp(2dy) = sinh(2dy)/(2dy) yields the
+  canonical parity-reduced representation W_tilde(d,t) = W(d,t)/d = 32 int_0^infty y^2
+  sinc_hyp(2dy) I(y,t) dy, whose Maclaurin coefficients c_{2m-1}(t) = m L_m(Xi;t) recover the
+  classical differential invariants of Jensen (1913) and Csordas-Varga (1990), with
+  W_tilde(0,t) = L_1(Xi;t) = (Xi'(t))^2 - Xi(t)Xi''(t). Using positive-weight integral
+  representations of sinc_hyp and eta_hyp, we construct division-free Cauchy-Riemann gradients
+  and non-harmonic-safe two-dimensional interval mean-value enclosures in mpmath.iv, benchmarked
+  on t <= 55 alongside a quantitative Higham |x|^T|y| roundoff-amplification audit of IEEE-754
+  float64 quadrature.

@@ -1,14 +1,14 @@
 {
   "schema_version": "1.0.0",
   "skill_name": "parity-reduced-wronskian-xi",
-  "title": "Parity-Reduced Transverse Wronskians, Higher Dipole Invariants, and Rigorous Continuum Certification for Riemann's Xi-Function",
+  "title": "Parity-Reduced Transverse Wronskians, Jensen-Laguerre Moment Identities, and Division-Free Interval Enclosures for Riemann's Xi-Function",
   "author": {
     "name": "Thijs Missiaen",
     "affiliation": "Independent Researcher, Belgium",
     "email": "thijs.missiaen@gmail.com",
     "orcid": "0009-0007-3678-0810"
   },
-  "version": "1.0.0",
+  "version": "1.1.0",
   "repository_url": "https://github.com/thijsmissiaen/paper2-parity-reduced-wronskian",
   "language": "en",
   "msc_2020": ["11M06", "65G30", "30D15", "26D15", "11Y35"],
@@ -21,16 +21,17 @@
     "c1_gamma1_lower": "1.9119120797e-06",
     "c3_gamma1_lower": "2.5880680426e-07",
     "c5_gamma1_lower": "1.1553062387e-08",
-    "continuum_cells_certified": "4987101 / 4987101 (100%)",
-    "min_W_hat_lower_oscillatory": "1.017466e+03",
-    "min_2d_interval_mvt_box": "1.559200e-12",
-    "max_argument_principle_winding_radius": "2.62e-14"
+    "tau_1_xi_prime_zero": "15.5857085898",
+    "tau_2_xi_prime_zero": "22.0979772804",
+    "min_2d_interval_mvt_box": "1.559197e-12",
+    "max_argument_principle_winding_radius": "2.62e-14",
+    "float64_rel_error_t55": "4.505e-02",
+    "float64_rel_error_t60": "1.375e+01"
   },
   "proven_theorems": [
-    "Odd transverse parity W(-d,t) = -W(d,t) with d^{2k}W/dd^{2k}(0,t) = 0 for all k >= 0 (Proposition 2.1)",
-    "Division-free Wigner-hyperbolic representation W_tilde(d,t) = W(d,t)/d = (1/2) int_0^infty y^2 sinc_hyp(dy) I(y,t) dy with flat Neumann tangent dW_tilde/dd(0,t) = 0 and W_tilde(0,t) = (Xi'(t))^2 - Xi(t)Xi''(t) (Proposition 2.1)",
-    "Higher transverse dipole moment hierarchy c_{2m-1}(t) and pure-square coalescence cascade c_{2m-1}(t_0) = (m/(m!)^2)(Xi^{(m)}(t_0))^2 > 0 (Theorem 3.1)",
-    "Division-free Cauchy-Riemann partial derivative identities for W_tilde, dW_tilde/dt, and dW_tilde/dd via sinc_hyp(w) and eta_hyp(w) (Proposition 3.3)",
-    "Directed-rounding interval certification (mpmath.iv) of c_1(gamma_k), c_3(gamma_k), c_5(gamma_k) > 0 across gamma_1..gamma_10, 80 2D Interval-MVT collar boxes, 5 macro argument-principle rectangles, and 4,987,101 continuum Lipschitz cells on [0, 0.50] x [0, 55] (Theorem 1.1 & Proposition 4.1)"
+    "Canonical parity-reduced Wigner-hyperbolic representation W_tilde(d,t) = W(d,t)/d = 32 int_0^infty y^2 sinc_hyp(2dy) I(y,t) dy with classical Laguerre boundary value W_tilde(0,t) = L_1(Xi;t) = (Xi'(t))^2 - Xi(t)Xi''(t) (Proposition 2.1)",
+    "Jensen (1913) and Csordas-Varga (1990) moment identity c_{2m-1}(t) = m L_m(Xi;t) = (2^{2m+3}/(2m-1)!) int_0^infty y^{2m} I(y,t) dy and local multiplicity jet c_{2m-1}(t_0) = (m/(m!)^2)(Xi^{(m)}(t_0))^2 (Theorem 3.1)",
+    "Division-free Cauchy-Riemann gradients and positive-weight integral representations of sinc_hyp(w) and eta_hyp(w) yielding non-harmonic-safe Taylor majorants (Propositions 3.2 & 4.1)",
+    "Methodological mpmath.iv enclosures on t <= 55 (c_1,c_3,c_5 > 0 at gamma_1..gamma_10, 80 collar boxes around gamma_k and true Xi'-extrema tau_k, 5 Cauchy rectangles) and Higham |x|^T|y| roundoff-amplification proof for IEEE-754 float64 quadrature (Theorem 1.1 & Section 5.3)"
   ]
 }
