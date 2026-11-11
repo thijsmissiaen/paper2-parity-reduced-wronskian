@@ -2,7 +2,7 @@
 
 **DOI (Zenodo / CERN):** [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23641698.svg)](https://doi.org/10.5281/zenodo.23641698) [`10.5281/zenodo.23641698`](https://doi.org/10.5281/zenodo.23641698)  
 **Author:** Thijs Missiaen (Independent Researcher, Belgium · [ORCID: 0009-0007-3678-0810](https://orcid.org/0009-0007-3678-0810) · `thijs.missiaen@gmail.com`)  
-**Series:** Transverse Wronskian of Riemann's $\Xi$-Function (Paper II · [Paper I DOI: 10.5281/zenodo.23637324](https://doi.org/10.5281/zenodo.23637324))  
+**Series:** Transverse Wronskian of Riemann's $\Xi$-Function (Paper II · [Paper I DOI: 10.5281/zenodo.24141130](https://doi.org/10.5281/zenodo.24141130))  
 **Repository:** [`https://github.com/thijsmissiaen/paper2-parity-reduced-wronskian`](https://github.com/thijsmissiaen/paper2-parity-reduced-wronskian)  
 **MSC 2020:** Primary `11M06`, `65G30`; Secondary `30D15`, `26D15`, `11Y35`  
 **Manuscript:** [`paper/paper2_parity_reduced_wronskian.pdf`](paper/paper2_parity_reduced_wronskian.pdf) (13 pages, AMS-LaTeX / pdfTeX)
